@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Digitaler Sandregen - v0.9.5</title>
+    <title>Digitaler Sandregen - v0.9.6</title>
     <style>
         :root {
             --bg-color: #050505;
@@ -136,14 +136,16 @@
 
     <script>
         /**
-         * Digitaler Sandregen v0.9.5
+         * Digitaler Sandregen v0.9.6
          * Änderungen: 
+         * - Neu: Das Glas bietet nun immer Platz für 5 Minuten mehr als eingestellt (Puffer-Volumen)
+         * - Optimierung: spawnChance Berechnung korrigiert, um die Zielhöhe exakt zu treffen
+         * - UI: Messpunkte und Skalierung berücksichtigen nun die 5-Minuten-Erweiterung
          * - Fehlerbehebung: Flackern minimiert durch strikte Render-Order und Alpha-Reset im Buffer
          * - Optimierung: Sand-Abstand zur Glaswand vergrößert (Kollisionsschutz)
          * - Neu: Sand bündig auf dem Glasboden (Offset Korrektur auf thickness/2)
          * - Neu: Sand näher an die Glaswände gerückt (Marge reduziert)
          * - Neu: Physikalisch korrekte Kurven-Kollision in den Glasecken (Radius 15px)
-         * - Alle Kommentare aus Vorversionen beibehalten
          */
 
         const canvas = document.getElementById('sandCanvas');
@@ -205,24 +207,30 @@
         }
 
         function calculateSpawnChance() {
-            const totalVolumeNeeded = glass.w * glass.h;
+            const totalMinutes = duration / 60;
+            const visualCapacityMinutes = totalMinutes + 5; // Glas ist immer 5 Min größer
+            
+            // Die Zielhöhe ist der Anteil der Zeit an der Gesamtkapazität des Glases
+            const usableHeight = glass.h - glass.thickness;
+            const targetHeight = usableHeight * (totalMinutes / visualCapacityMinutes);
+            
+            const totalVolumeNeeded = glass.w * targetHeight;
             const incrementPerParticle = 0.55; 
-            spawnChance = (totalVolumeNeeded / incrementPerParticle) / (duration * 60);
-            spawnChance = Math.max(0.1, Math.min(spawnChance, 8)); 
+            
+            // Berechnung der Partikel pro Sekunde
+            spawnChance = (totalVolumeNeeded / incrementPerParticle) / duration;
+            spawnChance = Math.max(0.1, Math.min(spawnChance, 12)); 
         }
 
         /**
          * Berechnet den vertikalen Versatz basierend auf der Abrundung des Glases.
-         * Sorgt dafür, dass Sand physikalisch korrekt auf der Kurve landet.
          */
         function getGlassBaselineOffset(localX) {
             const r = glass.cornerRadius;
             if (localX < r) {
-                // Linke Ecke: quadratische Annäherung an die Rundung
                 const ratio = 1 - (localX / r);
                 return ratio * ratio * r;
             } else if (localX > glass.w - r) {
-                // Rechte Ecke
                 const ratio = 1 - ((glass.w - localX) / r);
                 return ratio * ratio * r;
             }
@@ -255,18 +263,14 @@
                 this.y += this.speedY;
                 this.x += this.drift;
 
-                // Korrektur: Marge zur Wand auf die halbe Glasstärke reduziert
                 const innerMargin = glass.thickness / 2; 
                 if (this.x > glass.x + innerMargin && this.x < glass.x + glass.w - innerMargin && this.y > glass.y) {
                     const localX = Math.floor(this.x - glass.x);
                     const currentH = glassSandHeights[localX];
-                    
-                    // Neu: Die Baseline berücksichtigt nun die Rundung der Ecken
                     const cornerOffset = getGlassBaselineOffset(localX);
                     const floorY = (glass.y + glass.h - glass.thickness / 2 - cornerOffset) - currentH;
 
                     if (this.y >= floorY) {
-                        // Max Höhe angepasst, damit Sand nicht oben rausquillt (abzgl. Bodenstärke)
                         if (currentH < glass.h - glass.thickness - 2) {
                             this.drawToBuffer(localX, 'glass');
                         }
@@ -286,7 +290,6 @@
 
             findSettleIndex(index, heightsArray, isGlass = false) {
                 let current = index;
-                // Korrektur: Limit für das Herumrollen des Sands näher an den Rand
                 const limit = isGlass ? Math.floor(glass.thickness / 2) : 2;
 
                 for (let i = 0; i < 3; i++) {
@@ -294,7 +297,6 @@
                     const right = current + 1;
                     let moved = false;
                     
-                    // Neu: Beim Rutschen wird die Kurve mit einbezogen (Sand rutscht von Schrägen weg)
                     const currentTotalH = heightsArray[current] + (isGlass ? getGlassBaselineOffset(current) : 0);
                     
                     if (left >= limit) {
@@ -317,7 +319,6 @@
             }
 
             drawToBuffer(index, type) {
-                // Buffer Alpha explizit setzen, um Flackern beim State-Wechsel zu vermeiden
                 bgCtx.save();
                 bgCtx.fillStyle = this.color;
                 bgCtx.globalAlpha = this.opacity;
@@ -328,7 +329,6 @@
                     if (settledIndex > 0) glassSandHeights[settledIndex-1] += 0.08;
                     if (settledIndex < glassSandHeights.length-1) glassSandHeights[settledIndex+1] += 0.08;
                     
-                    // Korrektur: Zeichnen unter Einbeziehung des Ecken-Offsets
                     const cornerOffset = getGlassBaselineOffset(settledIndex);
                     bgCtx.fillRect(glass.x + settledIndex, (glass.y + glass.h - glass.thickness / 2 - cornerOffset) - glassSandHeights[settledIndex], this.size, this.size);
                 } else {
@@ -353,14 +353,13 @@
         function drawUIElements() {
             const { x, y, w, h, thickness, cornerRadius } = glass;
             
-            // State Isolation: Verhindert, dass Partikel-Eigenschaften das UI beeinflussen
             ctx.save();
             ctx.globalAlpha = 1.0;
             ctx.shadowBlur = 0;
             ctx.shadowColor = 'transparent';
             ctx.globalCompositeOperation = 'source-over';
 
-            // 1. Der Glaseffekt
+            // Glaseffekt
             ctx.fillStyle = 'rgba(255, 255, 255, 0.02)';
             ctx.fillRect(x, y, w, h);
 
@@ -376,6 +375,7 @@
             ctx.lineTo(x + w, y);
             ctx.stroke();
 
+            // Glanz-Gradient
             const g = ctx.createLinearGradient(x, y, x+w, y);
             g.addColorStop(0, 'rgba(255,255,255,0.01)'); 
             g.addColorStop(0.05, 'rgba(255,255,255,0.08)'); 
@@ -385,32 +385,30 @@
             ctx.fillStyle = g;
             ctx.fillRect(x, y, w, h);
 
-            ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
-            ctx.lineWidth = 1;
-            ctx.beginPath();
-            ctx.moveTo(x + 5, y + 10);
-            ctx.lineTo(x + 5, y + h - 20);
-            ctx.stroke();
-
-            // 2. Messpunkte
+            // Messpunkte (berücksichtigt nun +5 Minuten Puffer)
             const totalMinutes = duration / 60;
-            const pixelsPerMinute = (h - thickness / 2) / totalMinutes; // Korrektur: Nutzhöhe angepasst
+            const visualCapacityMinutes = totalMinutes + 5;
+            const pixelsPerMinute = (h - thickness / 2) / visualCapacityMinutes; 
+            
             ctx.textAlign = 'right';
             ctx.font = '500 9px Inter';
-            ctx.letterSpacing = "0px";
 
-            for (let min = 5; min < totalMinutes; min += 5) {
+            for (let min = 5; min <= visualCapacityMinutes; min += 5) {
                 const markY = (y + h - thickness / 2) - (min * pixelsPerMinute);
-                ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+                // Markierung für das Ziel (aktuelle Dauer) etwas heller
+                const isTarget = Math.abs(min - totalMinutes) < 0.1;
+                
+                ctx.strokeStyle = isTarget ? 'rgba(255, 255, 255, 0.4)' : 'rgba(255, 255, 255, 0.15)';
                 ctx.beginPath();
                 ctx.moveTo(x, markY);
-                ctx.lineTo(x + 12, markY);
+                ctx.lineTo(x + (isTarget ? 18 : 12), markY);
                 ctx.stroke();
-                ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+                
+                ctx.fillStyle = isTarget ? 'rgba(255, 255, 255, 0.6)' : 'rgba(255, 255, 255, 0.3)';
                 ctx.fillText(min, x - 10, markY + 3);
             }
 
-            // 3. Das Tag (Farbe & Text)
+            // Tag UI
             const tagX = x + w + 35;
             const tagY = y + 50;
             
@@ -447,7 +445,7 @@
             ctx.letterSpacing = "2px";
             ctx.fillText(currentPhase.label.toUpperCase(), tagX + 50, tagY + 58);
 
-            ctx.restore(); // Stellt den vorherigen Canvas-Status wieder her
+            ctx.restore();
         }
 
         function getPhaseData() {
@@ -467,7 +465,6 @@
             if (Math.random() < (spawnChance % 1)) toSpawn++;
             const phaseData = getPhaseData();
             
-            // Korrektur: Spawn-Margin näher an die Wände gerückt
             const spawnMargin = (glass.thickness / 2) + 1;
 
             for (let i = 0; i < toSpawn; i++) {
@@ -484,7 +481,6 @@
         }
 
         function animate(timestamp) {
-            // Frame-Start: Clear und Hintergrund zeichnen
             ctx.clearRect(0, 0, width, height);
             ctx.drawImage(bgCanvas, 0, 0);
 
@@ -504,18 +500,10 @@
                 ctx.globalCompositeOperation = 'lighter';
                 ctx.globalAlpha = pulse * 0.4;
                 ctx.drawImage(bgCanvas, 0, 0);
-                ctx.shadowBlur = 15 * pulse;
-                ctx.shadowColor = 'rgba(255, 215, 0, 0.5)';
-                ctx.drawImage(bgCanvas, 0, 0);
                 ctx.restore();
-                ctx.fillStyle = `rgba(255, 215, 0, ${pulse * 0.03})`;
-                ctx.fillRect(0, 0, width, height);
             }
 
-            // Erst UI zeichnen (über den Hintergrund, unter die aktiven Partikel für Tiefe)
             drawUIElements();
-            
-            // Dann Partikel spawnen und aktive Partikel zeichnen
             spawnParticles();
 
             for (let i = particles.length - 1; i >= 0; i--) {
