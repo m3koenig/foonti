@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Digitaler Sandregen - v1.0.0</title>
+    <title>Digitaler Sandregen - v1.1.0</title>
     <style>
         :root {
             --bg-color: #050505;
@@ -154,9 +154,11 @@
 
     <script>
         /**
-         * Digitaler Sandregen v1.0.0
+         * Digitaler Sandregen v1.1.0
          * Änderungen: 
-         * - Neu: Dampf-Effekt nach Abschluss des Timers
+         * - Neu: Glas-Explosion wenn die Count-up Zeit die ursprüngliche Dauer erreicht
+         * - Neu: Sand verteilt sich bei Explosion über den gesamten Screen
+         * - Neu: Dampf-Effekt nach Abschluss des Timers (läuft nach Explosion weiter)
          * - Neu: Count-up Timer im aufsteigenden Dampf zeigt verstrichene Zeit nach Ende
          * - Neu: Pulsierender Sandeffekt bei Fertigstellung
          * - Neu: Anpassbarer Name auf dem Tag (Standard: "Fokus"), editierbar über die UI
@@ -192,6 +194,7 @@
         let steamParticles = [];
         let isActive = false;
         let isFinished = false;
+        let isExploded = false;
         let duration = 25 * 60; 
         let timeRemaining = duration;
         let timeSinceFinished = 0;
@@ -266,9 +269,9 @@
         }
 
         class Particle {
-            constructor(x, phaseData) {
+            constructor(x, phaseData, y = -15, isExplosion = false) {
                 this.x = x;
-                this.y = -15;
+                this.y = y;
                 this.size = Math.random() * 1.3 + 0.7;
                 
                 this.wobbleOffset = Math.random() * Math.PI * 2;
@@ -288,8 +291,19 @@
                 }
                 
                 this.opacity = this.baseOpacity;
-                this.speedY = Math.random() * 1.5 + 2.5;
-                this.drift = (Math.random() - 0.5) * 0.3;
+                
+                if (isExplosion) {
+                    // Explosion: Partikel fliegen weg
+                    const angle = Math.random() * Math.PI * 2;
+                    const force = Math.random() * 10 + 5;
+                    this.vx = Math.cos(angle) * force;
+                    this.speedY = Math.sin(angle) * force;
+                } else {
+                    this.vx = (Math.random() - 0.5) * 0.3; // Standard Drift
+                    this.speedY = Math.random() * 1.5 + 2.5;
+                }
+                
+                this.drift = this.vx;
             }
 
             update() {
@@ -301,8 +315,9 @@
 
                 this.opacity = this.baseOpacity * (0.9 + Math.sin(Date.now() * 0.01 + this.wobbleOffset) * 0.1);
 
+                // Kollision mit Glas nur, wenn es noch nicht explodiert ist
                 const innerMargin = glass.thickness / 2; 
-                if (this.x > glass.x + innerMargin && this.x < glass.x + glass.w - innerMargin && this.y > glass.y) {
+                if (!isExploded && this.x > glass.x + innerMargin && this.x < glass.x + glass.w - innerMargin && this.y > glass.y) {
                     const localX = Math.floor(this.x - glass.x);
                     const currentH = glassSandHeights[localX];
                     const cornerOffset = getGlassBaselineOffset(localX);
@@ -323,7 +338,7 @@
                     return false;
                 }
 
-                return this.y < height + 20;
+                return this.y < height + 20 && this.x >= 0 && this.x <= width;
             }
 
             findSettleIndex(index, heightsArray, isGlass = false) {
@@ -390,9 +405,6 @@
             }
         }
 
-        /**
-         * Dampf-Partikel System v1.0.0
-         */
         class SteamParticle {
             constructor(x, y) {
                 this.x = x;
@@ -423,7 +435,41 @@
             }
         }
 
+        /**
+         * Löst die Glas-Explosion aus v1.1.0
+         */
+        function explodeGlass() {
+            if (isExploded) return;
+            isExploded = true;
+            
+            const phaseData = getPhaseData();
+            
+            // Konvertiere gesammelten Sand im Glas zu aktiven Partikeln
+            for (let x = 0; x < glassSandHeights.length; x += 3) {
+                const h = glassSandHeights[x];
+                if (h > 0) {
+                    const count = Math.min(15, Math.ceil(h / 2));
+                    for (let j = 0; j < count; j++) {
+                        const particleY = (glass.y + glass.h - glass.thickness / 2 - getGlassBaselineOffset(x)) - (Math.random() * h);
+                        particles.push(new Particle(glass.x + x, phaseData, particleY, true));
+                    }
+                }
+            }
+            
+            // Background Canvas (Sand im Glas) löschen
+            // Wir zeichnen ein schwarzes Rechteck über den Glasbereich im Buffer
+            bgCtx.save();
+            bgCtx.globalCompositeOperation = 'destination-out';
+            bgCtx.fillRect(glass.x - 10, glass.y - 10, glass.w + 20, glass.h + 20);
+            bgCtx.restore();
+            
+            // Glas-Sand-Daten zurücksetzen
+            glassSandHeights.fill(0);
+        }
+
         function drawUIElements() {
+            if (isExploded) return; // Glas existiert nicht mehr
+
             const { x, y, w, h, thickness, cornerRadius } = glass;
             
             ctx.save();
@@ -575,22 +621,29 @@
                 }
             } else if (isFinished) {
                 timeSinceFinished += delta;
+                
+                // Neu in v1.1.0: Check Explosion
+                if (!isExploded && timeSinceFinished >= duration) {
+                    explodeGlass();
+                }
             }
             lastTimestamp = timestamp;
 
-            // Fertigstellungs-Visualisierungen v1.0.0
+            // Fertigstellungs-Visualisierungen
             if (isFinished) {
-                const pulse = (Math.sin(Date.now() / 400) + 1) / 2;
-                ctx.save();
-                ctx.globalCompositeOperation = 'lighter';
-                ctx.globalAlpha = pulse * 0.45;
-                ctx.drawImage(bgCanvas, 0, 0);
-                ctx.restore();
+                if (!isExploded) {
+                    const pulse = (Math.sin(Date.now() / 400) + 1) / 2;
+                    ctx.save();
+                    ctx.globalCompositeOperation = 'lighter';
+                    ctx.globalAlpha = pulse * 0.45;
+                    ctx.drawImage(bgCanvas, 0, 0);
+                    ctx.restore();
+                }
 
                 // Dampf-Erzeugung
                 if (Math.random() < 0.25) {
-                    const steamX = glass.x + Math.random() * glass.w;
-                    const steamY = (glass.y + glass.h - glass.thickness) - Math.random() * 20;
+                    const steamX = isExploded ? glass.x + glass.w / 2 + (Math.random() - 0.5) * 100 : glass.x + Math.random() * glass.w;
+                    const steamY = isExploded ? height - 50 : (glass.y + glass.h - glass.thickness) - Math.random() * 20;
                     steamParticles.push(new SteamParticle(steamX, steamY));
                 }
 
@@ -609,11 +662,16 @@
                 ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
                 ctx.font = '300 12px Inter';
                 ctx.letterSpacing = "2px";
-                const timerY = glass.y + glass.h - 80;
-                ctx.fillText("ZEIT SEIT ABSCHLUSS", glass.x + glass.w / 2, timerY - 15);
+                const timerY = isExploded ? height / 2 - 20 : glass.y + glass.h - 80;
+                ctx.fillText(isExploded ? "DRUCK ENTWEICHEND" : "ZEIT SEIT ABSCHLUSS", glass.x + glass.w / 2, timerY - 15);
                 ctx.fillStyle = 'white';
                 ctx.font = '600 24px Inter';
                 ctx.fillText("+" + formatTime(timeSinceFinished), glass.x + glass.w / 2, timerY + 10);
+                if (isExploded) {
+                   ctx.font = '700 9px Inter';
+                   ctx.fillStyle = 'rgba(255, 0, 0, 0.5)';
+                   ctx.fillText("STRUKTUR VERLOREN", glass.x + glass.w / 2, timerY + 35);
+                }
                 ctx.restore();
             }
 
@@ -653,7 +711,8 @@
         resetBtn.addEventListener('click', resetSession);
 
         function resetSession() {
-            isActive = false; isFinished = false; particles = []; steamParticles = [];
+            isActive = false; isFinished = false; isExploded = false;
+            particles = []; steamParticles = [];
             glassSandHeights.fill(0); floorSandHeights.fill(0);
             bgCtx.clearRect(0, 0, width, height);
             const mins = parseInt(minutesInput.value) || 25;
