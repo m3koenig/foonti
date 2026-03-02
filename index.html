@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Digitaler Sandregen - v0.9.6</title>
+    <title>Digitaler Sandregen - v0.9.7</title>
     <style>
         :root {
             --bg-color: #050505;
@@ -136,8 +136,11 @@
 
     <script>
         /**
-         * Digitaler Sandregen v0.9.6
+         * Digitaler Sandregen v0.9.7
          * Änderungen: 
+         * - Optimierung: Partikel-System verbessert durch Schwerkraft-Beschleunigung und Wobble-Effekt
+         * - Optimierung: Verfeinerte findSettleIndex Logik für natürlichere Schüttkegel (Sandhaufen)
+         * - Visuell: Partikel pulsieren leicht in ihrer Opazität beim Fallen für organischen Glanz
          * - Neu: Das Glas bietet nun immer Platz für 5 Minuten mehr als eingestellt (Puffer-Volumen)
          * - Optimierung: spawnChance Berechnung korrigiert, um die Zielhöhe exakt zu treffen
          * - UI: Messpunkte und Skalierung berücksichtigen nun die 5-Minuten-Erweiterung
@@ -208,16 +211,14 @@
 
         function calculateSpawnChance() {
             const totalMinutes = duration / 60;
-            const visualCapacityMinutes = totalMinutes + 5; // Glas ist immer 5 Min größer
+            const visualCapacityMinutes = totalMinutes + 5; 
             
-            // Die Zielhöhe ist der Anteil der Zeit an der Gesamtkapazität des Glases
             const usableHeight = glass.h - glass.thickness;
             const targetHeight = usableHeight * (totalMinutes / visualCapacityMinutes);
             
             const totalVolumeNeeded = glass.w * targetHeight;
             const incrementPerParticle = 0.55; 
             
-            // Berechnung der Partikel pro Sekunde
             spawnChance = (totalVolumeNeeded / incrementPerParticle) / duration;
             spawnChance = Math.max(0.1, Math.min(spawnChance, 12)); 
         }
@@ -240,8 +241,13 @@
         class Particle {
             constructor(x, phaseData) {
                 this.x = x;
-                this.y = -10;
-                this.size = Math.random() * 1.2 + 0.8;
+                this.y = -15;
+                this.size = Math.random() * 1.3 + 0.7;
+                
+                // Organische Variablen für verbessertes Verhalten
+                this.wobbleOffset = Math.random() * Math.PI * 2;
+                this.wobbleSpeed = Math.random() * 0.05 + 0.02;
+                this.gravity = Math.random() * 0.05 + 0.02;
                 
                 const isSparkle = Math.random() > 0.98;
                 const lightnessVar = (Math.random() - 0.5) * 15;
@@ -249,19 +255,27 @@
                 
                 if (isSparkle) {
                     this.color = `hsl(${phaseData.h}, ${phaseData.s}%, 95%)`;
-                    this.opacity = 1;
+                    this.baseOpacity = 1;
                 } else {
                     this.color = `hsl(${phaseData.h + hueVar}, ${phaseData.s}%, ${phaseData.l + lightnessVar}%)`;
-                    this.opacity = Math.random() * 0.3 + 0.6;
+                    this.baseOpacity = Math.random() * 0.3 + 0.6;
                 }
-
-                this.speedY = Math.random() * 1.5 + 3;
-                this.drift = (Math.random() - 0.5) * 0.4;
+                
+                this.opacity = this.baseOpacity;
+                this.speedY = Math.random() * 1.5 + 2.5;
+                this.drift = (Math.random() - 0.5) * 0.3;
             }
 
             update() {
+                // Physik-Upgrade: Beschleunigung und Wobble
+                this.speedY += this.gravity;
                 this.y += this.speedY;
-                this.x += this.drift;
+                
+                const wobble = Math.sin(Date.now() * this.wobbleSpeed + this.wobbleOffset) * 0.5;
+                this.x += this.drift + wobble;
+
+                // Visueller Effekt: Sanftes Pulsieren beim Fallen
+                this.opacity = this.baseOpacity * (0.9 + Math.sin(Date.now() * 0.01 + this.wobbleOffset) * 0.1);
 
                 const innerMargin = glass.thickness / 2; 
                 if (this.x > glass.x + innerMargin && this.x < glass.x + glass.w - innerMargin && this.y > glass.y) {
@@ -291,8 +305,9 @@
             findSettleIndex(index, heightsArray, isGlass = false) {
                 let current = index;
                 const limit = isGlass ? Math.floor(glass.thickness / 2) : 2;
-
-                for (let i = 0; i < 3; i++) {
+                
+                // Verbessertes Abrollen: Prüft Slopes in 2-Pixel-Schritten für glattere Haufen
+                for (let i = 0; i < 4; i++) {
                     const left = current - 1;
                     const right = current + 1;
                     let moved = false;
@@ -301,14 +316,15 @@
                     
                     if (left >= limit) {
                         const leftTotalH = heightsArray[left] + (isGlass ? getGlassBaselineOffset(left) : 0);
-                        if (leftTotalH < currentTotalH - 1) {
+                        // Erhöhte Sensitivität für Rutsch-Verhalten
+                        if (leftTotalH < currentTotalH - 0.8) {
                             current = left; moved = true;
                         }
                     }
                     
                     if (!moved && right < heightsArray.length - limit) {
                         const rightTotalH = heightsArray[right] + (isGlass ? getGlassBaselineOffset(right) : 0);
-                        if (rightTotalH < currentTotalH - 1) {
+                        if (rightTotalH < currentTotalH - 0.8) {
                             current = right; moved = true;
                         }
                     }
@@ -321,13 +337,17 @@
             drawToBuffer(index, type) {
                 bgCtx.save();
                 bgCtx.fillStyle = this.color;
-                bgCtx.globalAlpha = this.opacity;
+                bgCtx.globalAlpha = this.baseOpacity;
                 
                 if (type === 'glass') {
                     const settledIndex = this.findSettleIndex(index, glassSandHeights, true);
-                    glassSandHeights[settledIndex] += 0.45;
-                    if (settledIndex > 0) glassSandHeights[settledIndex-1] += 0.08;
-                    if (settledIndex < glassSandHeights.length-1) glassSandHeights[settledIndex+1] += 0.08;
+                    // Volumen-Zuwachs leicht variiert für Textur
+                    const increment = 0.4 + Math.random() * 0.1;
+                    glassSandHeights[settledIndex] += increment;
+                    
+                    // Sanfterer Flow zu den Nachbarn
+                    if (settledIndex > 0) glassSandHeights[settledIndex-1] += increment * 0.2;
+                    if (settledIndex < glassSandHeights.length-1) glassSandHeights[settledIndex+1] += increment * 0.2;
                     
                     const cornerOffset = getGlassBaselineOffset(settledIndex);
                     bgCtx.fillRect(glass.x + settledIndex, (glass.y + glass.h - glass.thickness / 2 - cornerOffset) - glassSandHeights[settledIndex], this.size, this.size);
@@ -385,7 +405,7 @@
             ctx.fillStyle = g;
             ctx.fillRect(x, y, w, h);
 
-            // Messpunkte (berücksichtigt nun +5 Minuten Puffer)
+            // Messpunkte (berücksichtigt +5 Minuten Puffer)
             const totalMinutes = duration / 60;
             const visualCapacityMinutes = totalMinutes + 5;
             const pixelsPerMinute = (h - thickness / 2) / visualCapacityMinutes; 
@@ -395,7 +415,6 @@
 
             for (let min = 5; min <= visualCapacityMinutes; min += 5) {
                 const markY = (y + h - thickness / 2) - (min * pixelsPerMinute);
-                // Markierung für das Ziel (aktuelle Dauer) etwas heller
                 const isTarget = Math.abs(min - totalMinutes) < 0.1;
                 
                 ctx.strokeStyle = isTarget ? 'rgba(255, 255, 255, 0.4)' : 'rgba(255, 255, 255, 0.15)';
