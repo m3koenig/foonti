@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Digitaler Sandregen - v0.9.7</title>
+    <title>Digitaler Sandregen - v0.9.9</title>
     <style>
         :root {
             --bg-color: #050505;
@@ -73,6 +73,22 @@
             outline: none;
         }
 
+        input[type="text"] {
+            background: transparent;
+            border: none;
+            color: white;
+            width: 80px;
+            font-size: 0.9rem;
+            text-align: center;
+            outline: none;
+            opacity: 0.8;
+            transition: opacity 0.3s;
+        }
+
+        input[type="text"]:focus {
+            opacity: 1;
+        }
+
         input[type="color"] {
             -webkit-appearance: none;
             border: none;
@@ -123,6 +139,8 @@
 
     <div class="controls">
         <div class="input-group" id="settings-group">
+            <input type="text" id="tagNameInput" value="Fokus" placeholder="Name" maxlength="12">
+            <div style="width: 1px; height: 20px; background: rgba(255,255,255,0.1); margin: 0 5px;"></div>
             <input type="number" id="minutesInput" value="25" min="1" max="120">
             <span style="font-size: 0.7rem; opacity: 0.5; letter-spacing: 0.1em;">MINUTEN</span>
             <div style="width: 1px; height: 20px; background: rgba(255,255,255,0.1); margin: 0 5px;"></div>
@@ -136,8 +154,10 @@
 
     <script>
         /**
-         * Digitaler Sandregen v0.9.7
+         * Digitaler Sandregen v0.9.9
          * Änderungen: 
+         * - Neu: Anpassbarer Name auf dem Tag (Standard: "Fokus"), editierbar über die UI
+         * - Neu: "Spill"-Effekt (Sand außerhalb des Glases) drastisch reduziert für "Versehen"-Optik
          * - Optimierung: Partikel-System verbessert durch Schwerkraft-Beschleunigung und Wobble-Effekt
          * - Optimierung: Verfeinerte findSettleIndex Logik für natürlichere Schüttkegel (Sandhaufen)
          * - Visuell: Partikel pulsieren leicht in ihrer Opazität beim Fallen für organischen Glanz
@@ -161,6 +181,7 @@
         const resetBtn = document.getElementById('resetBtn');
         const minutesInput = document.getElementById('minutesInput');
         const tagColorInput = document.getElementById('tagColorInput');
+        const tagNameInput = document.getElementById('tagNameInput');
         const settingsGroup = document.getElementById('settings-group');
 
         let width, height;
@@ -171,6 +192,7 @@
         let timeRemaining = duration;
         let lastTimestamp = 0;
         let tagColor = '#191919';
+        let tagName = 'Fokus';
 
         let glass = { x: 0, y: 0, w: 0, h: 0, thickness: 6, cornerRadius: 15 };
         let glassSandHeights = [];
@@ -453,10 +475,17 @@
             ctx.arc(tagX + 12, tagY + 12, 3, 0, Math.PI * 2);
             ctx.fill();
 
+            // Tag Inhalt (Name & Zeit)
+            ctx.textAlign = 'center';
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+            ctx.font = '600 8px Inter';
+            ctx.letterSpacing = "1px";
+            ctx.fillText(tagName.toUpperCase(), tagX + 50, tagY + 15);
+
             ctx.fillStyle = 'white';
             ctx.font = '200 20px Inter';
-            ctx.textAlign = 'center';
-            ctx.fillText(formatTime(timeRemaining), tagX + 50, tagY + 30);
+            ctx.letterSpacing = "0px";
+            ctx.fillText(formatTime(timeRemaining), tagX + 50, tagY + 35);
             
             const currentPhase = getPhaseData();
             ctx.fillStyle = `hsl(${currentPhase.h}, ${currentPhase.s}%, ${currentPhase.l}%)`;
@@ -488,11 +517,11 @@
 
             for (let i = 0; i < toSpawn; i++) {
                 let x;
-                if (Math.random() > 0.04) {
+                if (Math.random() > 0.006) {
                     x = (glass.x + spawnMargin) + Math.random() * (glass.w - spawnMargin * 2);
                 } else {
                     const side = Math.random() > 0.5 ? 1 : -1;
-                    const margin = Math.random() * 25;
+                    const margin = Math.random() * 20;
                     x = side === 1 ? (glass.x + glass.w) + margin : (glass.x) - margin;
                 }
                 particles.push(new Particle(x, phaseData));
@@ -536,7 +565,10 @@
             requestAnimationFrame(animate);
         }
 
+        // Event Listeners
         tagColorInput.addEventListener('input', (e) => tagColor = e.target.value);
+        tagNameInput.addEventListener('input', (e) => tagName = e.target.value || 'Fokus');
+
         startBtn.addEventListener('click', () => {
             if (isFinished) { resetSession(); return; }
             if (!isActive) {
