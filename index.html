@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Digitaler Sandregen - v1.3.6</title>
+    <title>Digitaler Sandregen - v1.3.7</title>
     <style>
         :root {
             --bg-color: #050505;
@@ -44,7 +44,7 @@
             display: flex;
             flex-direction: column;
             align-items: center;
-            gap: 1rem;
+            gap: 0.8rem;
             pointer-events: none;
         }
 
@@ -53,32 +53,46 @@
         }
 
         .input-group {
-            background: rgba(255, 255, 255, 0.03);
-            padding: 0.6rem 1.2rem;
-            border-radius: 20px;
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            backdrop-filter: blur(10px);
+            background: rgba(255, 255, 255, 0.04);
+            padding: 0.5rem 0.8rem;
+            border-radius: 16px;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            backdrop-filter: blur(12px);
             display: flex;
+            flex-direction: column;
             align-items: center;
-            gap: 12px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
-            /* NEU v1.3.6: Feste Breite für Stabilität */
-            width: 440px;
-            justify-content: center;
+            gap: 8px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+            /* Optimierte Breite für Kompaktheit */
+            width: 360px;
         }
 
         .settings-grid {
             display: grid;
-            grid-template-columns: auto auto auto;
+            grid-template-columns: 1fr 1fr;
+            width: 100%;
+            gap: 10px;
+        }
+
+        .settings-row {
+            display: flex;
             align-items: center;
-            gap: 15px;
+            gap: 8px;
+            justify-content: center;
+        }
+
+        .divider-v {
+            width: 1px;
+            height: 20px;
+            background: rgba(255, 255, 255, 0.1);
         }
 
         .label-small {
-            font-size: 0.6rem;
-            opacity: 0.5;
-            letter-spacing: 0.1em;
+            font-size: 0.55rem;
+            opacity: 0.4;
+            letter-spacing: 0.05em;
             text-transform: uppercase;
+            margin-bottom: 2px;
         }
 
         input[type="number"], input[type="range"] {
@@ -89,33 +103,34 @@
         }
 
         input[type="number"] {
-            width: 40px;
-            font-size: 1rem;
+            width: 35px;
+            font-size: 0.9rem;
             text-align: center;
+            padding: 4px 0;
         }
 
         input[type="text"] {
             background: transparent;
             border: none;
             color: white;
-            width: 70px;
-            font-size: 0.9rem;
-            text-align: center;
+            width: 60px;
+            font-size: 0.85rem;
+            text-align: left;
             outline: none;
             opacity: 0.8;
         }
 
-        /* NEU v1.3.6: Feste Breite für die Slider, damit sie nicht springen */
         input[type="range"] {
-            width: 90px;
+            width: 70px;
             cursor: pointer;
+            height: 24px; /* Größere Touch-Fläche */
         }
 
         input[type="color"] {
             -webkit-appearance: none;
             border: none;
-            width: 20px;
-            height: 20px;
+            width: 18px;
+            height: 18px;
             border-radius: 50%;
             cursor: pointer;
             background: transparent;
@@ -127,39 +142,40 @@
 
         .button-row {
             display: flex;
-            gap: 0.8rem;
+            gap: 0.6rem;
         }
 
         button {
-            background: rgba(255, 255, 255, 0.07);
+            background: rgba(255, 255, 255, 0.06);
             border: 1px solid rgba(255, 255, 255, 0.1);
             color: white;
-            padding: 0.6rem 1.5rem;
-            border-radius: 30px;
+            padding: 0.5rem 1.2rem;
+            border-radius: 20px;
             cursor: pointer;
             backdrop-filter: blur(15px);
-            transition: all 0.3s ease;
-            font-size: 0.75rem;
+            transition: all 0.2s ease;
+            font-size: 0.7rem;
             text-transform: uppercase;
-            letter-spacing: 0.1em;
+            letter-spacing: 0.08em;
+            min-height: 36px; /* Touch freundlich */
         }
 
         button:hover {
-            background: rgba(255, 255, 255, 0.15);
-            border-color: rgba(255, 255, 255, 0.4);
+            background: rgba(255, 255, 255, 0.12);
+            border-color: rgba(255, 255, 255, 0.3);
         }
 
         .drag-hint {
             position: absolute;
-            top: -30px;
-            font-size: 0.7rem;
-            opacity: 0.4;
+            top: -24px;
+            font-size: 0.65rem;
+            opacity: 0.35;
             white-space: nowrap;
             transition: opacity 0.3s;
         }
 
         .hidden { display: none !important; }
-        .disabled-hint { color: #ff4d4d; opacity: 0.8; }
+        .disabled-hint { color: #ff5555; opacity: 0.7; }
     </style>
 </head>
 <body>
@@ -171,22 +187,24 @@
             <div class="drag-hint" id="dragHint">Zum Positionieren ziehen</div>
             
             <div class="input-group" id="settings-group">
-                <div class="settings-grid">
+                <!-- Obere Zeile: Name, Farbe, Zeit -->
+                <div class="settings-row" style="width: 100%; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 6px;">
                     <input type="text" id="tagNameInput" value="Fokus" placeholder="Name" maxlength="12">
                     <input type="color" id="tagColorInput" value="#191919">
-                    <div style="width: 1px; height: 15px; background: rgba(255,255,255,0.1);"></div>
-                    
-                    <div style="display: flex; align-items: center; gap: 5px;">
+                    <div class="divider-v"></div>
+                    <div style="display: flex; align-items: center; gap: 4px;">
                         <input type="number" id="minutesInput" value="25" min="1" max="120">
-                        <span class="label-small">Min</span>
+                        <span class="label-small" style="margin: 0;">Min</span>
                     </div>
+                </div>
 
-                    <div style="display: flex; flex-direction: column; gap: 2px;">
+                <!-- Untere Zeile: Dimensionen -->
+                <div class="settings-grid">
+                    <div style="display: flex; flex-direction: column; align-items: flex-start;">
                         <span class="label-small">Breite</span>
                         <input type="range" id="widthInput" min="150" max="500" value="280">
                     </div>
-                    
-                    <div style="display: flex; flex-direction: column; gap: 2px;">
+                    <div style="display: flex; flex-direction: column; align-items: flex-end;">
                         <span class="label-small">Höhe</span>
                         <input type="range" id="heightInput" min="150" max="600" value="380">
                     </div>
@@ -202,13 +220,12 @@
 
     <script>
         /**
-         * Digitaler Sandregen v1.3.6
+         * Digitaler Sandregen v1.3.7
          * Änderungen: 
-         * - Fehlerbehebung: "Springende" UI beim Verstellen der Größe behoben (Symmetric Resize Logic)
-         * - UI: Feste Breiten für Steuerungs-Container und Slider (Regler bleiben gleich groß)
-         * - Logik: Breite ändert sich von der Mitte aus; Höhe ändert sich nach oben (UI-Anker bleibt stabil)
-         * - Optimierung: shadowBlur für massives Leuchten (v1.3.5)
-         * - Alle bisherigen Effekte (Dampf, Explosion, Heartbeat) bleiben erhalten         
+         * - UI: Kompakteres Design (360px Breite) für bessere Übersichtlichkeit
+         * - UI: Optimierte Touch-Bereiche für Regler und Buttons
+         * - Logik: Symmetrisches Resize und stabile UI-Position (v1.3.6) erhalten
+         * - Alle Effekte (Pulsieren, Explosion, Dampf) bleiben vollständig erhalten
          * - Fehlerbehebung: Flackern der Pulsation durch Phasen-Akkumulation (smooth transitions) behoben
          * - Optimierung: Pulsationsrate dynamisch angepasst (65 BPM bis 200 BPM vor der Explosion)
          * - Optimierung: Pulsieren massiv verlangsamt (Human Heartbeat Rhythmus), startet extrem ruhig
@@ -230,7 +247,7 @@
          * - Optimierung: Sand-Abstand zur Glaswand vergrößert (Kollisionsschutz)
          * - Neu: Sand bündig auf dem Glasboden (Offset Korrektur auf thickness/2)
          * - Neu: Sand näher an die Glaswände gerückt (Marge reduziert)
-         * - Neu: Physikalisch korrekte Kurven-Kollision in den Glasecken (Radius 15px)         
+         * - Neu: Physikalisch korrekte Kurven-Kollision in den Glasecken (Radius 15px)                  
          */
 
         const canvas = document.getElementById('sandCanvas');
@@ -317,7 +334,6 @@
         }
 
         function updateControlPosition() {
-            // UI wird horizontal zentriert unter dem Glas platziert
             controls.style.left = `${glass.x + glass.w / 2 - controls.offsetWidth / 2}px`;
             controls.style.top = `${glass.y + glass.h + 20}px`;
         }
@@ -709,24 +725,20 @@
         tagColorInput.addEventListener('input', (e) => tagColor = e.target.value);
         tagNameInput.addEventListener('input', (e) => tagName = e.target.value || 'Fokus');
         
-        // NEU v1.3.6: Symmetrisches Resize für Breite (Zentrum bleibt gleich)
         widthInput.addEventListener('input', (e) => {
             if (isActive || isFinished) return;
             const newW = parseInt(e.target.value);
             const diff = newW - glass.w;
-            // Verschiebe x um die halbe Differenz, damit die Mitte stabil bleibt
             glass.x -= diff / 2;
             glass.w = newW;
             updateGlassHeights();
             updateControlPosition();
         });
         
-        // NEU v1.3.6: Resize für Höhe nach oben (UI-Anker unten bleibt gleich)
         heightInput.addEventListener('input', (e) => {
             if (isActive || isFinished) return;
             const newH = parseInt(e.target.value);
             const diff = newH - glass.h;
-            // Verschiebe y um die volle Differenz nach oben, damit der Boden fest bleibt
             glass.y -= diff;
             glass.h = newH;
             updateGlassHeights();
