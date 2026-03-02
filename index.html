@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Digitaler Sandregen - v1.2.4</title>
+    <title>Digitaler Sandregen - v1.3.6</title>
     <style>
         :root {
             --bg-color: #050505;
@@ -20,6 +20,7 @@
             background-color: var(--bg-color);
             font-family: 'Inter', sans-serif;
             color: var(--text-color);
+            user-select: none;
         }
 
         #canvas-container {
@@ -28,9 +29,6 @@
             left: 0;
             width: 100%;
             height: 100%;
-            display: flex;
-            justify-content: center;
-            align-items: center;
         }
 
         canvas {
@@ -40,65 +38,88 @@
             left: 0;
         }
 
-        .controls {
+        .glass-controls {
             position: absolute;
-            bottom: 5vh;
-            left: 50%;
-            transform: translateX(-50%);
             z-index: 100;
             display: flex;
             flex-direction: column;
             align-items: center;
             gap: 1rem;
+            pointer-events: none;
+        }
+
+        .glass-controls > * {
+            pointer-events: all;
         }
 
         .input-group {
             background: rgba(255, 255, 255, 0.03);
-            padding: 0.5rem 1.2rem;
+            padding: 0.6rem 1.2rem;
             border-radius: 20px;
             border: 1px solid rgba(255, 255, 255, 0.1);
-            backdrop-filter: blur(5px);
+            backdrop-filter: blur(10px);
             display: flex;
             align-items: center;
             gap: 12px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            /* NEU v1.3.6: Feste Breite für Stabilität */
+            width: 440px;
+            justify-content: center;
         }
 
-        input[type="number"] {
+        .settings-grid {
+            display: grid;
+            grid-template-columns: auto auto auto;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .label-small {
+            font-size: 0.6rem;
+            opacity: 0.5;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+        }
+
+        input[type="number"], input[type="range"] {
             background: transparent;
             border: none;
             color: white;
-            width: 45px;
-            font-size: 1.1rem;
-            text-align: center;
             outline: none;
+        }
+
+        input[type="number"] {
+            width: 40px;
+            font-size: 1rem;
+            text-align: center;
         }
 
         input[type="text"] {
             background: transparent;
             border: none;
             color: white;
-            width: 80px;
+            width: 70px;
             font-size: 0.9rem;
             text-align: center;
             outline: none;
             opacity: 0.8;
-            transition: opacity 0.3s;
         }
 
-        input[type="text"]:focus {
-            opacity: 1;
+        /* NEU v1.3.6: Feste Breite für die Slider, damit sie nicht springen */
+        input[type="range"] {
+            width: 90px;
+            cursor: pointer;
         }
 
         input[type="color"] {
             -webkit-appearance: none;
             border: none;
-            width: 24px;
-            height: 24px;
+            width: 20px;
+            height: 20px;
             border-radius: 50%;
             cursor: pointer;
             background: transparent;
         }
-        input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
         input[type="color"]::-webkit-color-swatch {
             border: 1px solid rgba(255, 255, 255, 0.2);
             border-radius: 50%;
@@ -106,19 +127,19 @@
 
         .button-row {
             display: flex;
-            gap: 1rem;
+            gap: 0.8rem;
         }
 
         button {
             background: rgba(255, 255, 255, 0.07);
             border: 1px solid rgba(255, 255, 255, 0.1);
             color: white;
-            padding: 0.8rem 2rem;
+            padding: 0.6rem 1.5rem;
             border-radius: 30px;
             cursor: pointer;
             backdrop-filter: blur(15px);
             transition: all 0.3s ease;
-            font-size: 0.8rem;
+            font-size: 0.75rem;
             text-transform: uppercase;
             letter-spacing: 0.1em;
         }
@@ -128,34 +149,66 @@
             border-color: rgba(255, 255, 255, 0.4);
         }
 
-        .hidden { display: none; }
+        .drag-hint {
+            position: absolute;
+            top: -30px;
+            font-size: 0.7rem;
+            opacity: 0.4;
+            white-space: nowrap;
+            transition: opacity 0.3s;
+        }
+
+        .hidden { display: none !important; }
+        .disabled-hint { color: #ff4d4d; opacity: 0.8; }
     </style>
 </head>
 <body>
 
     <div id="canvas-container">
         <canvas id="sandCanvas"></canvas>
-    </div>
+        
+        <div id="glassControls" class="glass-controls">
+            <div class="drag-hint" id="dragHint">Zum Positionieren ziehen</div>
+            
+            <div class="input-group" id="settings-group">
+                <div class="settings-grid">
+                    <input type="text" id="tagNameInput" value="Fokus" placeholder="Name" maxlength="12">
+                    <input type="color" id="tagColorInput" value="#191919">
+                    <div style="width: 1px; height: 15px; background: rgba(255,255,255,0.1);"></div>
+                    
+                    <div style="display: flex; align-items: center; gap: 5px;">
+                        <input type="number" id="minutesInput" value="25" min="1" max="120">
+                        <span class="label-small">Min</span>
+                    </div>
 
-    <div class="controls">
-        <div class="input-group" id="settings-group">
-            <input type="text" id="tagNameInput" value="Fokus" placeholder="Name" maxlength="12">
-            <div style="width: 1px; height: 20px; background: rgba(255,255,255,0.1); margin: 0 5px;"></div>
-            <input type="number" id="minutesInput" value="25" min="1" max="120">
-            <span style="font-size: 0.7rem; opacity: 0.5; letter-spacing: 0.1em;">MINUTEN</span>
-            <div style="width: 1px; height: 20px; background: rgba(255,255,255,0.1); margin: 0 5px;"></div>
-            <input type="color" id="tagColorInput" value="#191919" title="Tag Farbe wählen">
-        </div>
-        <div class="button-row">
-            <button id="startBtn">Start</button>
-            <button id="resetBtn" class="hidden">Reset</button>
+                    <div style="display: flex; flex-direction: column; gap: 2px;">
+                        <span class="label-small">Breite</span>
+                        <input type="range" id="widthInput" min="150" max="500" value="280">
+                    </div>
+                    
+                    <div style="display: flex; flex-direction: column; gap: 2px;">
+                        <span class="label-small">Höhe</span>
+                        <input type="range" id="heightInput" min="150" max="600" value="380">
+                    </div>
+                </div>
+            </div>
+
+            <div class="button-row">
+                <button id="startBtn">Start</button>
+                <button id="resetBtn" class="hidden">Reset</button>
+            </div>
         </div>
     </div>
 
     <script>
         /**
-         * Digitaler Sandregen v1.2.4
+         * Digitaler Sandregen v1.3.6
          * Änderungen: 
+         * - Fehlerbehebung: "Springende" UI beim Verstellen der Größe behoben (Symmetric Resize Logic)
+         * - UI: Feste Breiten für Steuerungs-Container und Slider (Regler bleiben gleich groß)
+         * - Logik: Breite ändert sich von der Mitte aus; Höhe ändert sich nach oben (UI-Anker bleibt stabil)
+         * - Optimierung: shadowBlur für massives Leuchten (v1.3.5)
+         * - Alle bisherigen Effekte (Dampf, Explosion, Heartbeat) bleiben erhalten         
          * - Fehlerbehebung: Flackern der Pulsation durch Phasen-Akkumulation (smooth transitions) behoben
          * - Optimierung: Pulsationsrate dynamisch angepasst (65 BPM bis 200 BPM vor der Explosion)
          * - Optimierung: Pulsieren massiv verlangsamt (Human Heartbeat Rhythmus), startet extrem ruhig
@@ -183,15 +236,19 @@
         const canvas = document.getElementById('sandCanvas');
         const ctx = canvas.getContext('2d');
         
-        const bgCanvas = document.createElement('canvas');
-        const bgCtx = bgCanvas.getContext('2d');
+        const floorBuffer = document.createElement('canvas');
+        const floorCtx = floorBuffer.getContext('2d');
 
+        const controls = document.getElementById('glassControls');
         const startBtn = document.getElementById('startBtn');
         const resetBtn = document.getElementById('resetBtn');
         const minutesInput = document.getElementById('minutesInput');
+        const widthInput = document.getElementById('widthInput');
+        const heightInput = document.getElementById('heightInput');
         const tagColorInput = document.getElementById('tagColorInput');
         const tagNameInput = document.getElementById('tagNameInput');
         const settingsGroup = document.getElementById('settings-group');
+        const dragHint = document.getElementById('dragHint');
 
         let width, height;
         let particles = [];
@@ -205,11 +262,17 @@
         let lastTimestamp = 0;
         let tagColor = '#191919';
         let tagName = 'Fokus';
-
-        // NEU v1.2.4: Phasen-Speicher für das Pulsieren um Flackern zu vermeiden
         let pulsePhase = 0;
 
-        let glass = { x: 0, y: 0, w: 0, h: 0, thickness: 6, cornerRadius: 15 };
+        let glass = { 
+            x: 0, y: 0, w: 280, h: 380, 
+            thickness: 6, cornerRadius: 15,
+            isDragging: false, dragOffset: { x: 0, y: 0 },
+            buffer: document.createElement('canvas'),
+            ctx: null
+        };
+        glass.ctx = glass.buffer.getContext('2d');
+
         let glassSandHeights = [];
         let floorSandHeights = [];
         let spawnChance = 0.3;
@@ -223,8 +286,16 @@
 
         function init() {
             resize();
+            glass.x = (width - glass.w) / 2;
+            glass.y = (height - glass.h) / 2 - 50;
+            
             window.addEventListener('resize', resize);
+            window.addEventListener('mousedown', onMouseDown);
+            window.addEventListener('mousemove', onMouseMove);
+            window.addEventListener('mouseup', onMouseUp);
+            
             requestAnimationFrame(animate);
+            updateControlPosition();
         }
 
         function resize() {
@@ -232,30 +303,71 @@
             height = window.innerHeight;
             canvas.width = width;
             canvas.height = height;
-            bgCanvas.width = width;
-            bgCanvas.height = height;
-
-            const glassW = Math.min(width * 0.5, 280);
-            const glassH = Math.min(height * 0.45, 380);
-            glass.w = glassW;
-            glass.h = glassH;
-            glass.x = (width - glassW) / 2;
-            glass.y = (height - glassH) / 2;
-
-            glassSandHeights = new Array(Math.floor(glass.w)).fill(0);
+            floorBuffer.width = width;
+            floorBuffer.height = height;
+            
             floorSandHeights = new Array(Math.floor(width)).fill(0);
+            updateGlassHeights();
+        }
+
+        function updateGlassHeights() {
+            glass.buffer.width = glass.w;
+            glass.buffer.height = glass.h;
+            glassSandHeights = new Array(Math.floor(glass.w)).fill(0);
+        }
+
+        function updateControlPosition() {
+            // UI wird horizontal zentriert unter dem Glas platziert
+            controls.style.left = `${glass.x + glass.w / 2 - controls.offsetWidth / 2}px`;
+            controls.style.top = `${glass.y + glass.h + 20}px`;
+        }
+
+        function onMouseDown(e) {
+            if (isActive || isFinished) return;
+            const mx = e.clientX;
+            const my = e.clientY;
+            
+            const isSandFalling = particles.length > 0;
+
+            if (mx >= glass.x && mx <= glass.x + glass.w && my >= glass.y && my <= glass.y + glass.h) {
+                if (isSandFalling) {
+                    dragHint.innerText = "Warte auf fallenden Sand...";
+                    dragHint.classList.add('disabled-hint');
+                    setTimeout(() => {
+                        if (!glass.isDragging) {
+                            dragHint.innerText = "Zum Positionieren ziehen";
+                            dragHint.classList.remove('disabled-hint');
+                        }
+                    }, 2000);
+                    return;
+                }
+
+                glass.isDragging = true;
+                glass.dragOffset.x = mx - glass.x;
+                glass.dragOffset.y = my - glass.y;
+                dragHint.classList.add('hidden');
+            }
+        }
+
+        function onMouseMove(e) {
+            if (glass.isDragging) {
+                glass.x = e.clientX - glass.dragOffset.x;
+                glass.y = e.clientY - glass.dragOffset.y;
+                updateControlPosition();
+            }
+        }
+
+        function onMouseUp() {
+            glass.isDragging = false;
         }
 
         function calculateSpawnChance() {
             const totalMinutes = duration / 60;
             const visualCapacityMinutes = totalMinutes + 5; 
-            
             const usableHeight = glass.h - glass.thickness;
             const targetHeight = usableHeight * (totalMinutes / visualCapacityMinutes);
-            
             const totalVolumeNeeded = glass.w * targetHeight;
             const incrementPerParticle = 0.55; 
-            
             spawnChance = (totalVolumeNeeded / incrementPerParticle) / duration;
             spawnChance = Math.max(0.1, Math.min(spawnChance, 12)); 
         }
@@ -282,14 +394,11 @@
                 this.gravity = Math.random() * 0.05 + 0.02;
                 
                 const isSparkle = Math.random() > 0.98;
-                const lightnessVar = (Math.random() - 0.5) * 15;
-                const hueVar = (Math.random() - 0.5) * 5;
-                
                 if (isSparkle) {
                     this.color = `hsl(${phaseData.h}, ${phaseData.s}%, 95%)`;
                     this.baseOpacity = 1;
                 } else {
-                    this.color = `hsl(${phaseData.h + hueVar}, ${phaseData.s}%, ${phaseData.l + lightnessVar}%)`;
+                    this.color = `hsl(${phaseData.h + (Math.random()-0.5)*5}, ${phaseData.s}%, ${phaseData.l + (Math.random()-0.5)*15}%)`;
                     this.baseOpacity = Math.random() * 0.3 + 0.6;
                 }
                 
@@ -304,11 +413,10 @@
                     this.vx = (Math.random() - 0.5) * 0.3; 
                     this.speedY = Math.random() * 1.5 + 2.5;
                 }
-                
                 this.drift = this.vx;
             }
 
-            update() {
+            update(delta) {
                 this.speedY += this.gravity;
                 this.y += this.speedY;
                 const wobble = Math.sin(Date.now() * this.wobbleSpeed + this.wobbleOffset) * 0.5;
@@ -340,24 +448,30 @@
             }
 
             drawToBuffer(index, type) {
-                bgCtx.save();
-                bgCtx.fillStyle = this.color;
-                bgCtx.globalAlpha = this.baseOpacity;
-                
                 if (type === 'glass') {
                     const settledIndex = this.findSettleIndex(index, glassSandHeights, true);
                     const increment = 0.4 + Math.random() * 0.1;
                     glassSandHeights[settledIndex] += increment;
+                    
                     if (settledIndex > 0) glassSandHeights[settledIndex-1] += increment * 0.2;
                     if (settledIndex < glassSandHeights.length-1) glassSandHeights[settledIndex+1] += increment * 0.2;
+                    
                     const cornerOffset = getGlassBaselineOffset(settledIndex);
-                    bgCtx.fillRect(glass.x + settledIndex, (glass.y + glass.h - glass.thickness / 2 - cornerOffset) - glassSandHeights[settledIndex], this.size, this.size);
+                    
+                    glass.ctx.save();
+                    glass.ctx.fillStyle = this.color;
+                    glass.ctx.globalAlpha = this.baseOpacity;
+                    glass.ctx.fillRect(settledIndex, (glass.h - glass.thickness / 2 - cornerOffset) - glassSandHeights[settledIndex], this.size, this.size);
+                    glass.ctx.restore();
                 } else {
                     const settledIndex = this.findSettleIndex(index, floorSandHeights, false);
                     floorSandHeights[settledIndex] += 0.3;
-                    bgCtx.fillRect(settledIndex, height - floorSandHeights[settledIndex], this.size, this.size);
+                    floorCtx.save();
+                    floorCtx.fillStyle = this.color;
+                    floorCtx.globalAlpha = this.baseOpacity;
+                    floorCtx.fillRect(settledIndex, height - floorSandHeights[settledIndex], this.size, this.size);
+                    floorCtx.restore();
                 }
-                bgCtx.restore();
             }
 
             findSettleIndex(index, heightsArray, isGlass = false) {
@@ -394,20 +508,14 @@
 
         class SteamParticle {
             constructor(x, y) {
-                this.x = x;
-                this.y = y;
+                this.x = x; this.y = y;
                 this.vx = (Math.random() - 0.5) * 0.6;
                 this.vy = -(Math.random() * 0.8 + 0.4);
                 this.life = 1.0;
                 this.decay = Math.random() * 0.005 + 0.005;
                 this.size = Math.random() * 15 + 10;
             }
-            update() {
-                this.x += this.vx;
-                this.y += this.vy;
-                this.life -= this.decay;
-                return this.life > 0;
-            }
+            update() { this.x += this.vx; this.y += this.vy; this.life -= this.decay; return this.life > 0; }
             draw() {
                 ctx.save();
                 ctx.globalAlpha = this.life * 0.15;
@@ -434,21 +542,26 @@
                     }
                 }
             }
-            bgCtx.save();
-            bgCtx.globalCompositeOperation = 'destination-out';
-            bgCtx.fillRect(glass.x - 10, glass.y - 10, glass.w + 20, glass.h + 20);
-            bgCtx.restore();
+            glass.ctx.clearRect(0, 0, glass.w, glass.h);
             glassSandHeights.fill(0);
         }
 
         function drawUIElements() {
             if (isExploded) return; 
             const { x, y, w, h, thickness, cornerRadius } = glass;
+            const currentPhase = getPhaseData();
+            
             ctx.save();
-            ctx.globalAlpha = 1.0;
+            
+            if (particles.length > 0) {
+                ctx.shadowBlur = 30; 
+                ctx.shadowColor = `hsl(${currentPhase.h}, ${currentPhase.s}%, 65%)`; 
+            }
+
             ctx.fillStyle = 'rgba(255, 255, 255, 0.02)';
             ctx.fillRect(x, y, w, h);
-            ctx.strokeStyle = 'rgba(255, 255, 255, 0.22)';
+            
+            ctx.strokeStyle = glass.isDragging ? 'rgba(255, 255, 255, 0.5)' : 'rgba(255, 255, 255, 0.22)';
             ctx.lineWidth = thickness;
             ctx.lineCap = 'round';
             ctx.beginPath();
@@ -457,23 +570,29 @@
             ctx.lineTo(x + w - cornerRadius, y + h);
             ctx.quadraticCurveTo(x + w, y + h, x + w, y + h - cornerRadius);
             ctx.lineTo(x + w, y); ctx.stroke();
+            
+            ctx.shadowBlur = 0;
+
             const g = ctx.createLinearGradient(x, y, x+w, y);
             g.addColorStop(0, 'rgba(255,255,255,0.01)'); g.addColorStop(0.05, 'rgba(255,255,255,0.08)'); 
             g.addColorStop(0.1, 'rgba(255,255,255,0.02)'); g.addColorStop(0.85, 'rgba(255,255,255,0.0)');
             g.addColorStop(0.95, 'rgba(255,255,255,0.06)');
             ctx.fillStyle = g; ctx.fillRect(x, y, w, h);
+
             const totalMinutes = duration / 60;
             const visualCapacityMinutes = totalMinutes + 5;
             const pixelsPerMinute = (h - thickness / 2) / visualCapacityMinutes; 
             ctx.textAlign = 'right'; ctx.font = '500 9px Inter';
             for (let min = 5; min <= visualCapacityMinutes; min += 5) {
                 const markY = (y + h - thickness / 2) - (min * pixelsPerMinute);
+                if (markY < y + 10) continue;
                 const isTarget = Math.abs(min - totalMinutes) < 0.1;
                 ctx.strokeStyle = isTarget ? 'rgba(255, 255, 255, 0.4)' : 'rgba(255, 255, 255, 0.15)';
                 ctx.beginPath(); ctx.moveTo(x, markY); ctx.lineTo(x + (isTarget ? 18 : 12), markY); ctx.stroke();
                 ctx.fillStyle = isTarget ? 'rgba(255, 255, 255, 0.6)' : 'rgba(255, 255, 255, 0.3)';
                 ctx.fillText(min, x - 10, markY + 3);
             }
+
             const tagX = x + w + 35; const tagY = y + 50;
             ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)'; ctx.lineWidth = 1;
             ctx.beginPath(); ctx.moveTo(x + w, y + 25); ctx.lineTo(tagX + 15, tagY + 5); ctx.stroke();
@@ -485,7 +604,7 @@
             ctx.letterSpacing = "1px"; ctx.fillText(tagName.toUpperCase(), tagX + 50, tagY + 15);
             ctx.fillStyle = 'white'; ctx.font = '200 20px Inter'; ctx.letterSpacing = "0px";
             ctx.fillText(formatTime(timeRemaining), tagX + 50, tagY + 35);
-            const currentPhase = getPhaseData(); ctx.fillStyle = `hsl(${currentPhase.h}, ${currentPhase.s}%, ${currentPhase.l}%)`;
+            ctx.fillStyle = `hsl(${currentPhase.h}, ${currentPhase.s}%, ${currentPhase.l}%)`;
             ctx.font = '700 7px Inter'; ctx.letterSpacing = "2px";
             ctx.fillText(currentPhase.label.toUpperCase(), tagX + 50, tagY + 58);
             ctx.restore();
@@ -512,8 +631,8 @@
                 let x;
                 if (Math.random() > 0.006) x = (glass.x + spawnMargin) + Math.random() * (glass.w - spawnMargin * 2);
                 else {
-                    const side = Math.random() > 0.5 ? 1 : -1; const margin = Math.random() * 20;
-                    x = side === 1 ? (glass.x + glass.w) + margin : (glass.x) - margin;
+                    const side = Math.random() > 0.5 ? 1 : -1; 
+                    x = side === 1 ? (glass.x + glass.w) + Math.random() * 20 : (glass.x) - Math.random() * 20;
                 }
                 particles.push(new Particle(x, phaseData));
             }
@@ -521,38 +640,44 @@
 
         function animate(timestamp) {
             ctx.clearRect(0, 0, width, height);
-            ctx.drawImage(bgCanvas, 0, 0);
+            ctx.drawImage(floorBuffer, 0, 0);
+            
+            if (!isExploded) {
+                ctx.drawImage(glass.buffer, glass.x, glass.y);
+            }
+
             if (!lastTimestamp) lastTimestamp = timestamp;
             const delta = (timestamp - lastTimestamp) / 1000;
+            
             if (isActive && timeRemaining > 0) {
                 timeRemaining -= delta;
-                if (timeRemaining <= 0) { timeRemaining = 0; isActive = false; isFinished = true; startBtn.innerText = "Neu Starten"; timeSinceFinished = 0; }
+                if (timeRemaining <= 0) { 
+                    timeRemaining = 0; isActive = false; isFinished = true; 
+                    startBtn.innerText = "Neu Starten"; timeSinceFinished = 0; 
+                }
             } else if (isFinished) {
                 timeSinceFinished += delta;
                 if (!isExploded && timeSinceFinished >= duration) explodeGlass();
             }
+            
             lastTimestamp = timestamp;
+            
+            if (isFinished && !isExploded) {
+                const progress = Math.min(1, timeSinceFinished / duration);
+                const easedProgress = Math.pow(progress, 4); 
+                const currentBpm = 65 + (easedProgress * 135);
+                pulsePhase += delta * (currentBpm / 60) * 2 * Math.PI;
+                const pulse = (Math.sin(pulsePhase) + 1) / 2;
+                const pulseStrength = 0.2 + (easedProgress * 0.75);
+                
+                ctx.save();
+                ctx.globalCompositeOperation = 'lighter';
+                ctx.globalAlpha = pulse * pulseStrength;
+                ctx.drawImage(glass.buffer, glass.x, glass.y);
+                ctx.restore();
+            }
+
             if (isFinished) {
-                if (!isExploded) {
-                    const progress = Math.min(1, timeSinceFinished / duration);
-                    const easedProgress = Math.pow(progress, 4); 
-                    
-                    const startBpm = 65;
-                    const endBpm = 200;
-                    const currentBpm = startBpm + (easedProgress * (endBpm - startBpm));
-                    
-                    // NEU v1.2.4: Phasen-Akkumulation statt Zeit-Division
-                    // Wir addieren den Fortschritt basierend auf den aktuellen Beats pro Sekunde (BPM / 60)
-                    pulsePhase += delta * (currentBpm / 60) * 2 * Math.PI;
-                    const pulse = (Math.sin(pulsePhase) + 1) / 2;
-                    
-                    const pulseStrength = 0.2 + (easedProgress * 0.75);
-                    ctx.save();
-                    ctx.globalCompositeOperation = 'lighter';
-                    ctx.globalAlpha = pulse * pulseStrength;
-                    ctx.drawImage(bgCanvas, 0, 0);
-                    ctx.restore();
-                }
                 if (Math.random() < 0.25) {
                     const steamX = isExploded ? glass.x + glass.w / 2 + (Math.random() - 0.5) * 100 : glass.x + Math.random() * glass.w;
                     const steamY = isExploded ? height - 50 : (glass.y + glass.h - glass.thickness) - Math.random() * 20;
@@ -562,6 +687,7 @@
                     if (steamParticles[i].update()) steamParticles[i].draw();
                     else steamParticles.splice(i, 1);
                 }
+                
                 ctx.save();
                 ctx.textAlign = 'center'; ctx.fillStyle = 'rgba(255, 255, 255, 0.4)'; ctx.font = '300 12px Inter'; ctx.letterSpacing = "2px";
                 const timerY = isExploded ? height / 2 - 20 : glass.y + glass.h - 80;
@@ -571,9 +697,10 @@
                 if (isExploded) { ctx.font = '700 9px Inter'; ctx.fillStyle = 'rgba(255, 0, 0, 0.5)'; ctx.fillText("STRUKTUR VERLOREN", glass.x + glass.w / 2, timerY + 35); }
                 ctx.restore();
             }
+
             drawUIElements(); spawnParticles();
             for (let i = particles.length - 1; i >= 0; i--) {
-                if (particles[i].update()) particles[i].draw();
+                if (particles[i].update(delta)) particles[i].draw();
                 else particles.splice(i, 1);
             }
             requestAnimationFrame(animate);
@@ -581,25 +708,70 @@
 
         tagColorInput.addEventListener('input', (e) => tagColor = e.target.value);
         tagNameInput.addEventListener('input', (e) => tagName = e.target.value || 'Fokus');
+        
+        // NEU v1.3.6: Symmetrisches Resize für Breite (Zentrum bleibt gleich)
+        widthInput.addEventListener('input', (e) => {
+            if (isActive || isFinished) return;
+            const newW = parseInt(e.target.value);
+            const diff = newW - glass.w;
+            // Verschiebe x um die halbe Differenz, damit die Mitte stabil bleibt
+            glass.x -= diff / 2;
+            glass.w = newW;
+            updateGlassHeights();
+            updateControlPosition();
+        });
+        
+        // NEU v1.3.6: Resize für Höhe nach oben (UI-Anker unten bleibt gleich)
+        heightInput.addEventListener('input', (e) => {
+            if (isActive || isFinished) return;
+            const newH = parseInt(e.target.value);
+            const diff = newH - glass.h;
+            // Verschiebe y um die volle Differenz nach oben, damit der Boden fest bleibt
+            glass.y -= diff;
+            glass.h = newH;
+            updateGlassHeights();
+            updateControlPosition();
+        });
+
         startBtn.addEventListener('click', () => {
             if (isFinished) { resetSession(); return; }
             if (!isActive) {
                 if (timeRemaining === duration) {
-                    const mins = parseInt(minutesInput.value) || 25; duration = mins * 60; timeRemaining = duration;
-                    calculateSpawnChance(); settingsGroup.classList.add('hidden'); resetBtn.classList.remove('hidden');
-                    bgCtx.clearRect(0, 0, width, height);
+                    const mins = parseInt(minutesInput.value) || 25; 
+                    duration = mins * 60; timeRemaining = duration;
+                    calculateSpawnChance(); 
+                    settingsGroup.classList.add('hidden'); 
+                    resetBtn.classList.remove('hidden');
+                    dragHint.classList.add('hidden');
+                    glass.ctx.clearRect(0, 0, glass.w, glass.h);
+                    floorCtx.clearRect(0, 0, width, height);
                 }
                 isActive = true; startBtn.innerText = "Pause";
-            } else isActive = false, startBtn.innerText = "Fortsetzen";
+            } else {
+                isActive = false; 
+                startBtn.innerText = "Fortsetzen";
+                if (particles.length === 0) dragHint.classList.remove('hidden');
+            }
         });
+
         resetBtn.addEventListener('click', resetSession);
+
         function resetSession() {
-            isActive = false; isFinished = false; isExploded = false; particles = []; steamParticles = [];
-            glassSandHeights.fill(0); floorSandHeights.fill(0); bgCtx.clearRect(0, 0, width, height);
-            const mins = parseInt(minutesInput.value) || 25; duration = mins * 60; timeRemaining = duration;
-            timeSinceFinished = 0; pulsePhase = 0; // Phase zurücksetzen
-            startBtn.innerText = "Start"; settingsGroup.classList.remove('hidden'); resetBtn.classList.add('hidden');
+            isActive = false; isFinished = false; isExploded = false; 
+            particles = []; steamParticles = [];
+            glassSandHeights.fill(0); floorSandHeights.fill(0); 
+            glass.ctx.clearRect(0, 0, glass.w, glass.h);
+            floorCtx.clearRect(0, 0, width, height);
+            const mins = parseInt(minutesInput.value) || 25; 
+            duration = mins * 60; timeRemaining = duration;
+            timeSinceFinished = 0; pulsePhase = 0;
+            startBtn.innerText = "Start"; 
+            settingsGroup.classList.remove('hidden'); 
+            resetBtn.classList.add('hidden');
+            dragHint.innerText = "Zum Positionieren ziehen";
+            dragHint.classList.remove('hidden', 'disabled-hint');
         }
+
         init();
     </script>
 </body>
