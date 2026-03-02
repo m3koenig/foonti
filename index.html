@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Digitaler Sandregen - v1.2.2</title>
+    <title>Digitaler Sandregen - v1.2.4</title>
     <style>
         :root {
             --bg-color: #050505;
@@ -154,8 +154,10 @@
 
     <script>
         /**
-         * Digitaler Sandregen v1.2.2
+         * Digitaler Sandregen v1.2.4
          * Änderungen: 
+         * - Fehlerbehebung: Flackern der Pulsation durch Phasen-Akkumulation (smooth transitions) behoben
+         * - Optimierung: Pulsationsrate dynamisch angepasst (65 BPM bis 200 BPM vor der Explosion)
          * - Optimierung: Pulsieren massiv verlangsamt (Human Heartbeat Rhythmus), startet extrem ruhig
          * - Optimierung: Beschleunigungskurve erhöht (Cubic-Out), damit die Ruhe länger anhält
          * - Neu: Glas-Explosion wenn die Count-up Zeit die ursprüngliche Dauer erreicht
@@ -203,6 +205,9 @@
         let lastTimestamp = 0;
         let tagColor = '#191919';
         let tagName = 'Fokus';
+
+        // NEU v1.2.4: Phasen-Speicher für das Pulsieren um Flackern zu vermeiden
+        let pulsePhase = 0;
 
         let glass = { x: 0, y: 0, w: 0, h: 0, thickness: 6, cornerRadius: 15 };
         let glassSandHeights = [];
@@ -529,14 +534,19 @@
             lastTimestamp = timestamp;
             if (isFinished) {
                 if (!isExploded) {
-                    // Neu in v1.2.2: Extrem ruhige, organische Pulsation (exponentiell Grad 4)
                     const progress = Math.min(1, timeSinceFinished / duration);
                     const easedProgress = Math.pow(progress, 4); 
-                    // Frequenz startet extrem langsam (1500ms Teiler) und wird erst spät hektisch
-                    const pulseFreq = 1500 - (easedProgress * 1440);
-                    // Intensität startet subtil (0.2)
+                    
+                    const startBpm = 65;
+                    const endBpm = 200;
+                    const currentBpm = startBpm + (easedProgress * (endBpm - startBpm));
+                    
+                    // NEU v1.2.4: Phasen-Akkumulation statt Zeit-Division
+                    // Wir addieren den Fortschritt basierend auf den aktuellen Beats pro Sekunde (BPM / 60)
+                    pulsePhase += delta * (currentBpm / 60) * 2 * Math.PI;
+                    const pulse = (Math.sin(pulsePhase) + 1) / 2;
+                    
                     const pulseStrength = 0.2 + (easedProgress * 0.75);
-                    const pulse = (Math.sin(Date.now() / pulseFreq) + 1) / 2;
                     ctx.save();
                     ctx.globalCompositeOperation = 'lighter';
                     ctx.globalAlpha = pulse * pulseStrength;
@@ -587,7 +597,8 @@
             isActive = false; isFinished = false; isExploded = false; particles = []; steamParticles = [];
             glassSandHeights.fill(0); floorSandHeights.fill(0); bgCtx.clearRect(0, 0, width, height);
             const mins = parseInt(minutesInput.value) || 25; duration = mins * 60; timeRemaining = duration;
-            timeSinceFinished = 0; startBtn.innerText = "Start"; settingsGroup.classList.remove('hidden'); resetBtn.classList.add('hidden');
+            timeSinceFinished = 0; pulsePhase = 0; // Phase zurücksetzen
+            startBtn.innerText = "Start"; settingsGroup.classList.remove('hidden'); resetBtn.classList.add('hidden');
         }
         init();
     </script>
