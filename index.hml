@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Digitaler Sandregen - v0.9.1</title>
+    <title>Digitaler Sandregen - v0.9.2</title>
     <style>
         :root {
             --bg-color: #050505;
@@ -136,10 +136,11 @@
 
     <script>
         /**
-         * Digitaler Sandregen v0.9.1
+         * Digitaler Sandregen v0.9.2
          * Änderungen: 
-         * - Fehlerbehebung: Flackern des Tags entfernt (State Reset)
-         * - UI-Rendering wird nun durch ctx.save()/restore() isoliert
+         * - Fehlerbehebung: Flackern minimiert durch strikte Render-Order und Alpha-Reset im Buffer
+         * - Optimierung: Sand-Abstand zur Glaswand vergrößert (Kollisionsschutz)
+         * - Alle Kommentare aus Vorversionen beibehalten
          */
 
         const canvas = document.getElementById('sandCanvas');
@@ -233,7 +234,9 @@
                 this.y += this.speedY;
                 this.x += this.drift;
 
-                if (this.x > glass.x && this.x < glass.x + glass.w && this.y > glass.y) {
+                // Erhöhter Sicherheitsabstand zur Glaswand beim Check (thickness + kleiner Puffer)
+                const innerMargin = glass.thickness + 1;
+                if (this.x > glass.x + innerMargin && this.x < glass.x + glass.w - innerMargin && this.y > glass.y) {
                     const localX = Math.floor(this.x - glass.x);
                     const currentH = glassSandHeights[localX];
                     const floorY = (glass.y + glass.h) - currentH;
@@ -256,15 +259,18 @@
                 return this.y < height + 20;
             }
 
-            findSettleIndex(index, heightsArray) {
+            findSettleIndex(index, heightsArray, isGlass = false) {
                 let current = index;
+                // Margin für das Glühen innerhalb der Sandschicht (nicht über den Rand gleiten)
+                const limit = isGlass ? glass.thickness + 2 : 2;
+
                 for (let i = 0; i < 3; i++) {
                     const left = current - 1;
                     const right = current + 1;
                     let moved = false;
-                    if (left >= 0 && heightsArray[left] < heightsArray[current] - 1) {
+                    if (left >= limit && heightsArray[left] < heightsArray[current] - 1) {
                         current = left; moved = true;
-                    } else if (right < heightsArray.length && heightsArray[right] < heightsArray[current] - 1) {
+                    } else if (right < heightsArray.length - limit && heightsArray[right] < heightsArray[current] - 1) {
                         current = right; moved = true;
                     }
                     if (!moved) break;
@@ -273,28 +279,33 @@
             }
 
             drawToBuffer(index, type) {
+                // Buffer Alpha explizit setzen, um Flackern beim State-Wechsel zu vermeiden
+                bgCtx.save();
                 bgCtx.fillStyle = this.color;
                 bgCtx.globalAlpha = this.opacity;
                 
                 if (type === 'glass') {
-                    const settledIndex = this.findSettleIndex(index, glassSandHeights);
+                    const settledIndex = this.findSettleIndex(index, glassSandHeights, true);
                     glassSandHeights[settledIndex] += 0.45;
                     if (settledIndex > 0) glassSandHeights[settledIndex-1] += 0.08;
                     if (settledIndex < glassSandHeights.length-1) glassSandHeights[settledIndex+1] += 0.08;
                     bgCtx.fillRect(glass.x + settledIndex, (glass.y + glass.h) - glassSandHeights[settledIndex], this.size, this.size);
                 } else {
-                    const settledIndex = this.findSettleIndex(index, floorSandHeights);
+                    const settledIndex = this.findSettleIndex(index, floorSandHeights, false);
                     floorSandHeights[settledIndex] += 0.3;
                     bgCtx.fillRect(settledIndex, height - floorSandHeights[settledIndex], this.size, this.size);
                 }
+                bgCtx.restore();
             }
 
             draw() {
+                ctx.save();
                 ctx.fillStyle = this.color;
                 ctx.globalAlpha = this.opacity;
                 ctx.beginPath();
                 ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
                 ctx.fill();
+                ctx.restore();
             }
         }
 
@@ -414,10 +425,14 @@
             let toSpawn = Math.floor(spawnChance);
             if (Math.random() < (spawnChance % 1)) toSpawn++;
             const phaseData = getPhaseData();
+            
+            // Sicherheits-Margin für Spawn innerhalb des Glases
+            const spawnMargin = glass.thickness + 4;
+
             for (let i = 0; i < toSpawn; i++) {
                 let x;
                 if (Math.random() > 0.04) {
-                    x = (glass.x + 4) + Math.random() * (glass.w - 8);
+                    x = (glass.x + spawnMargin) + Math.random() * (glass.w - spawnMargin * 2);
                 } else {
                     const side = Math.random() > 0.5 ? 1 : -1;
                     const margin = Math.random() * 25;
@@ -428,7 +443,9 @@
         }
 
         function animate(timestamp) {
+            // Frame-Start: Clear und Hintergrund zeichnen
             ctx.clearRect(0, 0, width, height);
+            ctx.drawImage(bgCanvas, 0, 0);
 
             if (!lastTimestamp) lastTimestamp = timestamp;
             if (isActive && timeRemaining > 0) {
@@ -439,8 +456,6 @@
                 }
             }
             lastTimestamp = timestamp;
-
-            ctx.drawImage(bgCanvas, 0, 0);
 
             if (isFinished) {
                 const pulse = (Math.sin(Date.now() / 400) + 1) / 2;
@@ -456,7 +471,10 @@
                 ctx.fillRect(0, 0, width, height);
             }
 
+            // Erst UI zeichnen (über den Hintergrund, unter die aktiven Partikel für Tiefe)
             drawUIElements();
+            
+            // Dann Partikel spawnen und aktive Partikel zeichnen
             spawnParticles();
 
             for (let i = particles.length - 1; i >= 0; i--) {
