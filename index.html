@@ -1,9 +1,45 @@
+ <!-- 
+    Change Log
+    Focus on Time - Foonti v1.3.9
+    Änderungen: 
+    - Neu: Präzise Volumen-Zeit-Kopplung (Sandmenge entspricht exakt dem Timer-Fortschritt)
+    - Neu: Proportionale Füllhöhe egal ob 1 Minute oder 120 Minuten Dauer
+    - UI: Kompaktes vertikales Design (v1.3.8) beibehalten
+    - Logik: Symmetrisches Resize (v1.3.6) beibehalten
+    - Alle Effekte (Pulse, Glow, Explosion, Dampf) integriert
+    - UI: Kompakteres Design (360px Breite) für bessere Übersichtlichkeit
+    - UI: Optimierte Touch-Bereiche für Regler und Buttons
+    - Logik: Symmetrisches Resize und stabile UI-Position (v1.3.6) erhalten
+    - Alle Effekte (Pulsieren, Explosion, Dampf) bleiben vollständig erhalten
+    - Fehlerbehebung: Flackern der Pulsation durch Phasen-Akkumulation (smooth transitions) behoben
+    - Optimierung: Pulsationsrate dynamisch angepasst (65 BPM bis 200 BPM vor der Explosion)
+    - Optimierung: Pulsieren massiv verlangsamt (Human Heartbeat Rhythmus), startet extrem ruhig
+    - Optimierung: Beschleunigungskurve erhöht (Cubic-Out), damit die Ruhe länger anhält
+    - Neu: Glas-Explosion wenn die Count-up Zeit die ursprüngliche Dauer erreicht
+    - Neu: Sand verteilt sich bei Explosion über den gesamten Screen
+    - Neu: Dampf-Effekt nach Abschluss des Timers (läuft nach Explosion weiter)
+    - Neu: Count-up Timer im aufsteigenden Dampf zeigt verstrichene Zeit nach Ende
+    - Neu: Pulsierender Sandeffekt bei Fertigstellung
+    - Neu: Anpassbarer Name auf dem Tag (Standard: "Fokus"), editierbar über die UI
+    - Neu: "Spill"-Effekt (Sand außerhalb des Glases) drastisch reduziert für "Versehen"-Optik
+    - Optimierung: Partikel-System verbessert durch Schwerkraft-Beschleunigung und Wobble-Effekt
+    - Optimierung: Verfeinerte findSettleIndex Logik für natürlichere Schüttkegel (Sandhaufen)
+    - Visuell: Partikel pulsieren leicht in ihrer Opazität beim Fallen für organischen Glanz
+    - Neu: Das Glas bietet nun immer Platz für 5 Minuten mehr als eingestellt (Puffer-Volumen)
+    - Optimierung: spawnChance Berechnung korrigiert, um die Zielhöhe exakt zu treffen
+    - UI: Messpunkte und Skalierung berücksichtigen nun die 5-Minuten-Erweiterung
+    - Fehlerbehebung: Flackern minimiert durch strikte Render-Order und Alpha-Reset im Buffer
+    - Optimierung: Sand-Abstand zur Glaswand vergrößert (Kollisionsschutz)
+    - Neu: Sand bündig auf dem Glasboden (Offset Korrektur auf thickness/2)
+    - Neu: Sand näher an die Glaswände gerückt (Marge reduziert)
+    - Neu: Physikalisch korrekte Kurven-Kollision in den Glasecken (Radius 15px)                  
+-->
 <!DOCTYPE html>
 <html lang="de">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Digitaler Sandregen - v1.3.8</title>
+    <title>Focus on Time - Foonti - v1.3.9</title>
     <style>
         :root {
             --bg-color: #050505;
@@ -62,7 +98,6 @@
             flex-direction: column;
             gap: 12px;
             box-shadow: 0 8px 32px rgba(0,0,0,0.6);
-            /* Ultrakompakte Breite, vertikale Anordnung */
             width: 200px;
         }
 
@@ -185,15 +220,11 @@
             <div class="drag-hint" id="dragHint">Zum Positionieren ziehen</div>
             
             <div class="input-group" id="settings-group">
-                <!-- Name & Farbe -->
                 <div class="control-row">
                     <input type="text" id="tagNameInput" value="Fokus" placeholder="Name" maxlength="12">
                     <input type="color" id="tagColorInput" value="#191919">
                 </div>
-
                 <div class="divider-h"></div>
-
-                <!-- Zeit -->
                 <div class="control-row">
                     <span class="label-small">Dauer</span>
                     <div style="display: flex; align-items: center; gap: 2px;">
@@ -201,8 +232,6 @@
                         <span class="label-small" style="opacity: 0.3;">min</span>
                     </div>
                 </div>
-
-                <!-- Breite Slider -->
                 <div class="control-stack">
                     <div class="control-row">
                         <span class="label-small">Breite</span>
@@ -210,8 +239,6 @@
                     </div>
                     <input type="range" id="widthInput" min="150" max="500" value="280">
                 </div>
-
-                <!-- Höhe Slider -->
                 <div class="control-stack">
                     <div class="control-row">
                         <span class="label-small">Höhe</span>
@@ -228,41 +255,7 @@
         </div>
     </div>
 
-    <script>
-        /**
-         * Digitaler Sandregen v1.3.8
-         * Änderungen: 
-         * - UI: Maximal kompakte vertikale Anordnung (200px Breite)
-         * - UI: Stapelelemente für bessere Übersichtlichkeit ("untereinander")
-         * - Logik: Symmetrisches Resize (Zentrum/Boden stabil) erhalten
-         * - Alle visuellen Effekte und Kommentare bleiben unverändert 
-         * - UI: Kompakteres Design (360px Breite) für bessere Übersichtlichkeit
-         * - UI: Optimierte Touch-Bereiche für Regler und Buttons
-         * - Logik: Symmetrisches Resize und stabile UI-Position (v1.3.6) erhalten
-         * - Alle Effekte (Pulsieren, Explosion, Dampf) bleiben vollständig erhalten
-         * - Fehlerbehebung: Flackern der Pulsation durch Phasen-Akkumulation (smooth transitions) behoben
-         * - Optimierung: Pulsationsrate dynamisch angepasst (65 BPM bis 200 BPM vor der Explosion)
-         * - Optimierung: Pulsieren massiv verlangsamt (Human Heartbeat Rhythmus), startet extrem ruhig
-         * - Optimierung: Beschleunigungskurve erhöht (Cubic-Out), damit die Ruhe länger anhält
-         * - Neu: Glas-Explosion wenn die Count-up Zeit die ursprüngliche Dauer erreicht
-         * - Neu: Sand verteilt sich bei Explosion über den gesamten Screen
-         * - Neu: Dampf-Effekt nach Abschluss des Timers (läuft nach Explosion weiter)
-         * - Neu: Count-up Timer im aufsteigenden Dampf zeigt verstrichene Zeit nach Ende
-         * - Neu: Pulsierender Sandeffekt bei Fertigstellung
-         * - Neu: Anpassbarer Name auf dem Tag (Standard: "Fokus"), editierbar über die UI
-         * - Neu: "Spill"-Effekt (Sand außerhalb des Glases) drastisch reduziert für "Versehen"-Optik
-         * - Optimierung: Partikel-System verbessert durch Schwerkraft-Beschleunigung und Wobble-Effekt
-         * - Optimierung: Verfeinerte findSettleIndex Logik für natürlichere Schüttkegel (Sandhaufen)
-         * - Visuell: Partikel pulsieren leicht in ihrer Opazität beim Fallen für organischen Glanz
-         * - Neu: Das Glas bietet nun immer Platz für 5 Minuten mehr als eingestellt (Puffer-Volumen)
-         * - Optimierung: spawnChance Berechnung korrigiert, um die Zielhöhe exakt zu treffen
-         * - UI: Messpunkte und Skalierung berücksichtigen nun die 5-Minuten-Erweiterung
-         * - Fehlerbehebung: Flackern minimiert durch strikte Render-Order und Alpha-Reset im Buffer
-         * - Optimierung: Sand-Abstand zur Glaswand vergrößert (Kollisionsschutz)
-         * - Neu: Sand bündig auf dem Glasboden (Offset Korrektur auf thickness/2)
-         * - Neu: Sand näher an die Glaswände gerückt (Marge reduziert)
-         * - Neu: Physikalisch korrekte Kurven-Kollision in den Glasecken (Radius 15px)                  
-         */
+    <script>       
 
         const canvas = document.getElementById('sandCanvas');
         const ctx = canvas.getContext('2d');
@@ -321,12 +314,10 @@
             resize();
             glass.x = (width - glass.w) / 2;
             glass.y = (height - glass.h) / 2 - 50;
-            
             window.addEventListener('resize', resize);
             window.addEventListener('mousedown', onMouseDown);
             window.addEventListener('mousemove', onMouseMove);
             window.addEventListener('mouseup', onMouseUp);
-            
             requestAnimationFrame(animate);
             updateControlPosition();
         }
@@ -338,7 +329,6 @@
             canvas.height = height;
             floorBuffer.width = width;
             floorBuffer.height = height;
-            
             floorSandHeights = new Array(Math.floor(width)).fill(0);
             updateGlassHeights();
         }
@@ -358,9 +348,7 @@
             if (isActive || isFinished) return;
             const mx = e.clientX;
             const my = e.clientY;
-            
             const isSandFalling = particles.length > 0;
-
             if (mx >= glass.x && mx <= glass.x + glass.w && my >= glass.y && my <= glass.y + glass.h) {
                 if (isSandFalling) {
                     dragHint.innerText = "Warte auf fallenden Sand...";
@@ -373,7 +361,6 @@
                     }, 2000);
                     return;
                 }
-
                 glass.isDragging = true;
                 glass.dragOffset.x = mx - glass.x;
                 glass.dragOffset.y = my - glass.y;
@@ -389,19 +376,32 @@
             }
         }
 
-        function onMouseUp() {
-            glass.isDragging = false;
-        }
+        function onMouseUp() { glass.isDragging = false; }
 
+        /**
+         * NEU v1.3.9: Präzise Berechnung der Spawn-Rate basierend auf Dauer und Ziel-Volumen
+         */
         function calculateSpawnChance() {
-            const totalMinutes = duration / 60;
-            const visualCapacityMinutes = totalMinutes + 5; 
-            const usableHeight = glass.h - glass.thickness;
-            const targetHeight = usableHeight * (totalMinutes / visualCapacityMinutes);
-            const totalVolumeNeeded = glass.w * targetHeight;
-            const incrementPerParticle = 0.55; 
-            spawnChance = (totalVolumeNeeded / incrementPerParticle) / duration;
-            spawnChance = Math.max(0.1, Math.min(spawnChance, 12)); 
+            const D = duration; // Timer Dauer in Sekunden
+            const C = D + 300;  // Kapazität des Glases (Timer + 5 Min Puffer)
+            const usableH = glass.h - glass.thickness;
+            
+            // Zielhöhe ist der Anteil der Timer-Dauer an der Gesamtkapazität
+            const targetH = usableH * (D / C);
+            
+            // Ziel-Volumen in Pixeln
+            const totalVol = glass.w * targetH;
+            
+            // Durchschnittlicher Höhenzuwachs pro gelandetem Partikel (~0.55 inkl. Nachbarn)
+            const inc = 0.55; 
+            const totalParticlesNeeded = totalVol / inc;
+            
+            // spawnChance ist die Anzahl der Partikel pro Frame (bei ca. 60 FPS)
+            // Formel: Gesamtpartikel / (Sekunden * 60)
+            spawnChance = totalParticlesNeeded / (D * 60);
+            
+            // Sanity Check: Mindest- und Höchstwerte für flüssige Animation
+            spawnChance = Math.max(0.01, Math.min(spawnChance, 15)); 
         }
 
         function getGlassBaselineOffset(localX) {
@@ -418,13 +418,11 @@
 
         class Particle {
             constructor(x, phaseData, y = -15, isExplosion = false) {
-                this.x = x;
-                this.y = y;
+                this.x = x; this.y = y;
                 this.size = Math.random() * 1.3 + 0.7;
                 this.wobbleOffset = Math.random() * Math.PI * 2;
                 this.wobbleSpeed = Math.random() * 0.05 + 0.02;
                 this.gravity = Math.random() * 0.05 + 0.02;
-                
                 const isSparkle = Math.random() > 0.98;
                 if (isSparkle) {
                     this.color = `hsl(${phaseData.h}, ${phaseData.s}%, 95%)`;
@@ -433,9 +431,7 @@
                     this.color = `hsl(${phaseData.h + (Math.random()-0.5)*5}, ${phaseData.s}%, ${phaseData.l + (Math.random()-0.5)*15}%)`;
                     this.baseOpacity = Math.random() * 0.3 + 0.6;
                 }
-                
                 this.opacity = this.baseOpacity;
-                
                 if (isExplosion) {
                     const angle = Math.random() * Math.PI * 2;
                     const force = Math.random() * 10 + 5;
@@ -454,26 +450,19 @@
                 const wobble = Math.sin(Date.now() * this.wobbleSpeed + this.wobbleOffset) * 0.5;
                 this.x += this.drift + wobble;
                 this.opacity = this.baseOpacity * (0.9 + Math.sin(Date.now() * 0.01 + this.wobbleOffset) * 0.1);
-
                 const innerMargin = glass.thickness / 2; 
                 if (!isExploded && this.x > glass.x + innerMargin && this.x < glass.x + glass.w - innerMargin && this.y > glass.y) {
                     const localX = Math.floor(this.x - glass.x);
                     const currentH = glassSandHeights[localX];
                     const cornerOffset = getGlassBaselineOffset(localX);
                     const floorY = (glass.y + glass.h - glass.thickness / 2 - cornerOffset) - currentH;
-
                     if (this.y >= floorY) {
-                        if (currentH < glass.h - glass.thickness - 2) {
-                            this.drawToBuffer(localX, 'glass');
-                        }
+                        if (currentH < glass.h - glass.thickness - 2) this.drawToBuffer(localX, 'glass');
                         return false;
                     }
-                } 
-                else if (this.y >= height - floorSandHeights[Math.floor(this.x)]) {
+                } else if (this.y >= height - floorSandHeights[Math.floor(this.x)]) {
                     const floorX = Math.floor(this.x);
-                    if (floorX >= 0 && floorX < width) {
-                        this.drawToBuffer(floorX, 'floor');
-                    }
+                    if (floorX >= 0 && floorX < width) this.drawToBuffer(floorX, 'floor');
                     return false;
                 }
                 return this.y < height + 20 && this.x >= 0 && this.x <= width;
@@ -507,8 +496,7 @@
                 let current = index;
                 const limit = isGlass ? Math.floor(glass.thickness / 2) : 2;
                 for (let i = 0; i < 4; i++) {
-                    const left = current - 1;
-                    const right = current + 1;
+                    const left = current - 1; const right = current + 1;
                     let moved = false;
                     const currentTotalH = heightsArray[current] + (isGlass ? getGlassBaselineOffset(current) : 0);
                     if (left >= limit) {
@@ -525,35 +513,21 @@
             }
 
             draw() {
-                ctx.save();
-                ctx.fillStyle = this.color;
-                ctx.globalAlpha = this.opacity;
-                ctx.beginPath();
-                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
-                ctx.fill();
-                ctx.restore();
+                ctx.save(); ctx.fillStyle = this.color; ctx.globalAlpha = this.opacity;
+                ctx.beginPath(); ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2); ctx.fill(); ctx.restore();
             }
         }
 
         class SteamParticle {
             constructor(x, y) {
                 this.x = x; this.y = y;
-                this.vx = (Math.random() - 0.5) * 0.6;
-                this.vy = -(Math.random() * 0.8 + 0.4);
-                this.life = 1.0;
-                this.decay = Math.random() * 0.005 + 0.005;
-                this.size = Math.random() * 15 + 10;
+                this.vx = (Math.random() - 0.5) * 0.6; this.vy = -(Math.random() * 0.8 + 0.4);
+                this.life = 1.0; this.decay = Math.random() * 0.005 + 0.005; this.size = Math.random() * 15 + 10;
             }
             update() { this.x += this.vx; this.y += this.vy; this.life -= this.decay; return this.life > 0; }
             draw() {
-                ctx.save();
-                ctx.globalAlpha = this.life * 0.15;
-                ctx.fillStyle = 'white';
-                ctx.filter = 'blur(8px)';
-                ctx.beginPath();
-                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
-                ctx.fill();
-                ctx.restore();
+                ctx.save(); ctx.globalAlpha = this.life * 0.15; ctx.fillStyle = 'white'; ctx.filter = 'blur(8px)';
+                ctx.beginPath(); ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2); ctx.fill(); ctx.restore();
             }
         }
 
@@ -579,37 +553,29 @@
             if (isExploded) return; 
             const { x, y, w, h, thickness, cornerRadius } = glass;
             const currentPhase = getPhaseData();
-            
             ctx.save();
             if (particles.length > 0) {
-                ctx.shadowBlur = 30; 
-                ctx.shadowColor = `hsl(${currentPhase.h}, ${currentPhase.s}%, 65%)`; 
+                ctx.shadowBlur = 30; ctx.shadowColor = `hsl(${currentPhase.h}, ${currentPhase.s}%, 65%)`; 
             }
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.02)';
-            ctx.fillRect(x, y, w, h);
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.02)'; ctx.fillRect(x, y, w, h);
             ctx.strokeStyle = glass.isDragging ? 'rgba(255, 255, 255, 0.5)' : 'rgba(255, 255, 255, 0.22)';
-            ctx.lineWidth = thickness;
-            ctx.lineCap = 'round';
-            ctx.beginPath();
-            ctx.moveTo(x, y); ctx.lineTo(x, y + h - cornerRadius);
-            ctx.quadraticCurveTo(x, y + h, x + cornerRadius, y + h);
-            ctx.lineTo(x + w - cornerRadius, y + h);
-            ctx.quadraticCurveTo(x + w, y + h, x + w, y + h - cornerRadius);
-            ctx.lineTo(x + w, y); ctx.stroke();
+            ctx.lineWidth = thickness; ctx.lineCap = 'round';
+            ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x, y + h - cornerRadius);
+            ctx.quadraticCurveTo(x, y + h, x + cornerRadius, y + h); ctx.lineTo(x + w - cornerRadius, y + h);
+            ctx.quadraticCurveTo(x + w, y + h, x + w, y + h - cornerRadius); ctx.lineTo(x + w, y); ctx.stroke();
             ctx.shadowBlur = 0;
             const g = ctx.createLinearGradient(x, y, x+w, y);
             g.addColorStop(0, 'rgba(255,255,255,0.01)'); g.addColorStop(0.05, 'rgba(255,255,255,0.08)'); 
             g.addColorStop(0.1, 'rgba(255,255,255,0.02)'); g.addColorStop(0.85, 'rgba(255,255,255,0.0)');
             g.addColorStop(0.95, 'rgba(255,255,255,0.06)');
             ctx.fillStyle = g; ctx.fillRect(x, y, w, h);
-            const totalMinutes = duration / 60;
-            const visualCapacityMinutes = totalMinutes + 5;
-            const pixelsPerMinute = (h - thickness / 2) / visualCapacityMinutes; 
+            const D_sec = duration; const C_sec = D_sec + 300;
+            const pixelsPerMinute = (h - thickness / 2) / (C_sec / 60); 
             ctx.textAlign = 'right'; ctx.font = '500 9px Inter';
-            for (let min = 5; min <= visualCapacityMinutes; min += 5) {
+            for (let min = 5; min <= C_sec / 60; min += 5) {
                 const markY = (y + h - thickness / 2) - (min * pixelsPerMinute);
                 if (markY < y + 10) continue;
-                const isTarget = Math.abs(min - totalMinutes) < 0.1;
+                const isTarget = Math.abs(min - D_sec / 60) < 0.1;
                 ctx.strokeStyle = isTarget ? 'rgba(255, 255, 255, 0.4)' : 'rgba(255, 255, 255, 0.15)';
                 ctx.beginPath(); ctx.moveTo(x, markY); ctx.lineTo(x + (isTarget ? 18 : 12), markY); ctx.stroke();
                 ctx.fillStyle = isTarget ? 'rgba(255, 255, 255, 0.6)' : 'rgba(255, 255, 255, 0.3)';
@@ -668,10 +634,7 @@
             const delta = (timestamp - lastTimestamp) / 1000;
             if (isActive && timeRemaining > 0) {
                 timeRemaining -= delta;
-                if (timeRemaining <= 0) { 
-                    timeRemaining = 0; isActive = false; isFinished = true; 
-                    startBtn.innerText = "Neu Starten"; timeSinceFinished = 0; 
-                }
+                if (timeRemaining <= 0) { timeRemaining = 0; isActive = false; isFinished = true; startBtn.innerText = "Neu Starten"; timeSinceFinished = 0; }
             } else if (isFinished) {
                 timeSinceFinished += delta;
                 if (!isExploded && timeSinceFinished >= duration) explodeGlass();
@@ -684,11 +647,8 @@
                 pulsePhase += delta * (currentBpm / 60) * 2 * Math.PI;
                 const pulse = (Math.sin(pulsePhase) + 1) / 2;
                 const pulseStrength = 0.2 + (easedProgress * 0.75);
-                ctx.save();
-                ctx.globalCompositeOperation = 'lighter';
-                ctx.globalAlpha = pulse * pulseStrength;
-                ctx.drawImage(glass.buffer, glass.x, glass.y);
-                ctx.restore();
+                ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = pulse * pulseStrength;
+                ctx.drawImage(glass.buffer, glass.x, glass.y); ctx.restore();
             }
             if (isFinished) {
                 if (Math.random() < 0.25) {
@@ -700,8 +660,7 @@
                     if (steamParticles[i].update()) steamParticles[i].draw();
                     else steamParticles.splice(i, 1);
                 }
-                ctx.save();
-                ctx.textAlign = 'center'; ctx.fillStyle = 'rgba(255, 255, 255, 0.4)'; ctx.font = '300 12px Inter'; ctx.letterSpacing = "2px";
+                ctx.save(); ctx.textAlign = 'center'; ctx.fillStyle = 'rgba(255, 255, 255, 0.4)'; ctx.font = '300 12px Inter'; ctx.letterSpacing = "2px";
                 const timerY = isExploded ? height / 2 - 20 : glass.y + glass.h - 80;
                 ctx.fillText(isExploded ? "DRUCK ENTWEICHEND" : "ZEIT SEIT ABSCHLUSS", glass.x + glass.w / 2, timerY - 15);
                 ctx.fillStyle = 'white'; ctx.font = '600 24px Inter';
@@ -711,8 +670,7 @@
             }
             drawUIElements(); spawnParticles();
             for (let i = particles.length - 1; i >= 0; i--) {
-                if (particles[i].update(delta)) particles[i].draw();
-                else particles.splice(i, 1);
+                if (particles[i].update(delta)) particles[i].draw(); else particles.splice(i, 1);
             }
             requestAnimationFrame(animate);
         }
@@ -721,23 +679,13 @@
         tagNameInput.addEventListener('input', (e) => tagName = e.target.value || 'Fokus');
         widthInput.addEventListener('input', (e) => {
             if (isActive || isFinished) return;
-            const newW = parseInt(e.target.value);
-            const diff = newW - glass.w;
-            glass.x -= diff / 2;
-            glass.w = newW;
-            widthLabel.innerText = newW;
-            updateGlassHeights();
-            updateControlPosition();
+            const newW = parseInt(e.target.value); const diff = newW - glass.w;
+            glass.x -= diff / 2; glass.w = newW; widthLabel.innerText = newW; updateGlassHeights(); updateControlPosition();
         });
         heightInput.addEventListener('input', (e) => {
             if (isActive || isFinished) return;
-            const newH = parseInt(e.target.value);
-            const diff = newH - glass.h;
-            glass.y -= diff;
-            glass.h = newH;
-            heightLabel.innerText = newH;
-            updateGlassHeights();
-            updateControlPosition();
+            const newH = parseInt(e.target.value); const diff = newH - glass.h;
+            glass.y -= diff; glass.h = newH; heightLabel.innerText = newH; updateGlassHeights(); updateControlPosition();
         });
         startBtn.addEventListener('click', () => {
             if (isFinished) { resetSession(); return; }
@@ -746,34 +694,21 @@
                     const mins = parseInt(minutesInput.value) || 25; 
                     duration = mins * 60; timeRemaining = duration;
                     calculateSpawnChance(); 
-                    settingsGroup.classList.add('hidden'); 
-                    resetBtn.classList.remove('hidden');
-                    dragHint.classList.add('hidden');
-                    glass.ctx.clearRect(0, 0, glass.w, glass.h);
-                    floorCtx.clearRect(0, 0, width, height);
+                    settingsGroup.classList.add('hidden'); resetBtn.classList.remove('hidden'); dragHint.classList.add('hidden');
+                    glass.ctx.clearRect(0, 0, glass.w, glass.h); floorCtx.clearRect(0, 0, width, height);
                 }
                 isActive = true; startBtn.innerText = "Pause";
-            } else {
-                isActive = false; 
-                startBtn.innerText = "Fortsetzen";
-                if (particles.length === 0) dragHint.classList.remove('hidden');
-            }
+            } else { isActive = false; startBtn.innerText = "Fortsetzen"; if (particles.length === 0) dragHint.classList.remove('hidden'); }
         });
         resetBtn.addEventListener('click', resetSession);
         function resetSession() {
-            isActive = false; isFinished = false; isExploded = false; 
-            particles = []; steamParticles = [];
-            glassSandHeights.fill(0); floorSandHeights.fill(0); 
-            glass.ctx.clearRect(0, 0, glass.w, glass.h);
+            isActive = false; isFinished = false; isExploded = false; particles = []; steamParticles = [];
+            glassSandHeights.fill(0); floorSandHeights.fill(0); glass.ctx.clearRect(0, 0, glass.w, glass.h);
             floorCtx.clearRect(0, 0, width, height);
-            const mins = parseInt(minutesInput.value) || 25; 
-            duration = mins * 60; timeRemaining = duration;
+            const mins = parseInt(minutesInput.value) || 25; duration = mins * 60; timeRemaining = duration;
             timeSinceFinished = 0; pulsePhase = 0;
-            startBtn.innerText = "Start"; 
-            settingsGroup.classList.remove('hidden'); 
-            resetBtn.classList.add('hidden');
-            dragHint.innerText = "Zum Positionieren ziehen";
-            dragHint.classList.remove('hidden', 'disabled-hint');
+            startBtn.innerText = "Start"; settingsGroup.classList.remove('hidden'); resetBtn.classList.add('hidden');
+            dragHint.innerText = "Zum Positionieren ziehen"; dragHint.classList.remove('hidden', 'disabled-hint');
         }
         init();
     </script>
