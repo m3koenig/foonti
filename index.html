@@ -1,55 +1,22 @@
 <!-- 
     Change Log
-    Focus on Time - Foonti v1.5.3
+    Focus on Time - Foonti v1.5.4
     Änderungen: 
-    - Fehlerbehebung: SecurityError bei history.replaceState in Blob/Iframe-Umgebungen durch try-catch abgesichert.
-    - Optimierung: Robustere URL-Generierung für die "Teilen"-Funktion.
-    - UI: Responsive UI-Optimierung für Mobilgeräte (v1.5.2) beibehalten.
-    - Logik: Sprechende URL-Parameter (name, color, mins, width, height, start) erhalten.
-    - Logik: "Instant-Fill" (preFillSand) für absolute Synchronität erhalten.
+    - Fehlerbehebung: Überlagerung der Buttons auf dem Glas bei Mobilgeräten behoben.
+    - Optimierung: updateControlPosition erzwingt nun einen Mindestabstand zum Glasboden.
+    - Logik: UI-Position wird nun bei Start/Pause/Reset sofort aktualisiert (Layout-Refresh).
+    - UI: .glass-controls CSS für präzisere JS-Positionierung angepasst.
+    - Fehlerbehebung: SecurityError bei history.replaceState (v1.5.3) weiterhin abgesichert.
+    - Logik: Sprechende URL-Parameter und "Instant-Fill" erhalten.
     - UI: Tag-Anzeige (v1.3.9) und alle Effekte (v1.4.0) vollständig erhalten.
     - Alle Kommentare und physikalischen Logiken beibehalten.
-    - Logik: Präzise Volumen-Zeit-Kopplung beibehalten.
-    - UI: Kompaktes vertikales Design integriert.
-    - Alle Effekte (Pulse, Glow, Explosion, Dampf) integriert.
-    - Neu: Präzise Volumen-Zeit-Kopplung (Sandmenge entspricht exakt dem Timer-Fortschritt)
-    - Neu: Proportionale Füllhöhe egal ob 1 Minute oder 120 Minuten Dauer
-    - UI: Kompaktes vertikales Design (v1.3.8) beibehalten
-    - Logik: Symmetrisches Resize (v1.3.6) beibehalten
-    - Alle Effekte (Pulse, Glow, Explosion, Dampf) integriert
-    - UI: Kompakteres Design (360px Breite) für bessere Übersichtlichkeit
-    - UI: Optimierte Touch-Bereiche für Regler und Buttons
-    - Logik: Symmetrisches Resize und stabile UI-Position (v1.3.6) erhalten
-    - Alle Effekte (Pulsieren, Explosion, Dampf) bleiben vollständig erhalten
-    - Fehlerbehebung: Flackern der Pulsation durch Phasen-Akkumulation (smooth transitions) behoben
-    - Optimierung: Pulsationsrate dynamisch angepasst (65 BPM bis 200 BPM vor der Explosion)
-    - Optimierung: Pulsieren massiv verlangsamt (Human Heartbeat Rhythmus), startet extrem ruhig
-    - Optimierung: Beschleunigungskurve erhöht (Cubic-Out), damit die Ruhe länger anhält
-    - Neu: Glas-Explosion wenn die Count-up Zeit die ursprüngliche Dauer erreicht
-    - Neu: Sand verteilt sich bei Explosion über den gesamten Screen
-    - Neu: Dampf-Effekt nach Abschluss des Timers (läuft nach Explosion weiter)
-    - Neu: Count-up Timer im aufsteigenden Dampf zeigt verstrichene Zeit nach Ende
-    - Neu: Pulsierender Sandeffekt bei Fertigstellung
-    - Neu: Anpassbarer Name auf dem Tag (Standard: "Fokus"), editierbar über die UI
-    - Neu: "Spill"-Effekt (Sand außerhalb des Glases) drastisch reduziert für "Versehen"-Optik
-    - Optimierung: Partikel-System verbessert durch Schwerkraft-Beschleunigung und Wobble-Effekt
-    - Optimierung: Verfeinerte findSettleIndex Logik für natürlichere Schüttkegel (Sandhaufen)
-    - Visuell: Partikel pulsieren leicht in ihrer Opazität beim Fallen für organischen Glanz
-    - Neu: Das Glas bietet nun immer Platz für 5 Minuten mehr als eingestellt (Puffer-Volumen)
-    - Optimierung: spawnChance Berechnung korrigiert, um die Zielhöhe exakt zu treffen
-    - UI: Messpunkte und Skalierung berücksichtigen nun die 5-Minuten-Erweiterung
-    - Fehlerbehebung: Flackern minimiert durch strikte Render-Order und Alpha-Reset im Buffer
-    - Optimierung: Sand-Abstand zur Glaswand vergrößert (Kollisionsschutz)
-    - Neu: Sand bündig auf dem Glasboden (Offset Korrektur auf thickness/2)
-    - Neu: Sand näher an die Glaswände gerückt (Marge reduziert)
-    - Neu: Physikalisch korrekte Kurven-Kollision in den Glasecken (Radius 15px)                  
 -->
 <!DOCTYPE html>
 <html lang="de">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Digitaler Sandregen - v1.5.3</title>
+    <title>Digitaler Sandregen - v1.5.4</title>
     <style>
         :root {
             --bg-color: #050505;
@@ -93,7 +60,9 @@
             align-items: center;
             gap: 0.8rem;
             pointer-events: none;
-            width: 100%; /* Für Zentrierung auf Mobile */
+            /* Breite auf auto, da left via JS gesteuert wird */
+            width: auto; 
+            min-width: 200px;
         }
 
         .glass-controls > * {
@@ -504,16 +473,17 @@
         }
 
         function updateControlPosition() {
+            if (!controls) return;
             const centerX = glass.x + glass.w / 2;
-            controls.style.left = `${Math.max(0, Math.min(width - controls.offsetWidth, centerX - controls.offsetWidth / 2))}px`;
             
-            // Verhindert, dass die Controls unter den Screen-Rand rutschen
+            // Horizontale Zentrierung der Controls (mit Boundary-Check)
+            const controlsHalfWidth = controls.offsetWidth / 2;
+            controls.style.left = `${Math.max(10, Math.min(width - controls.offsetWidth - 10, centerX - controlsHalfWidth))}px`;
+            
+            // Vertikale Positionierung: Mindestens 20px unter dem Glasboden
+            // Wir ignorieren hier bewusst den unteren Screen-Rand, um Überlappung zu vermeiden
             const idealTop = glass.y + glass.h + 20;
-            if (idealTop + controls.offsetHeight > height - 10) {
-                controls.style.top = `${height - controls.offsetHeight - 10}px`;
-            } else {
-                controls.style.top = `${idealTop}px`;
-            }
+            controls.style.top = `${idealTop}px`;
         }
 
         function onStartDrag(e) {
@@ -857,11 +827,16 @@
                     settingsGroup.classList.add('hidden'); resetBtn.classList.remove('hidden'); dragHint.classList.add('hidden');
                     glass.ctx.clearRect(0, 0, glass.w, glass.h); floorCtx.clearRect(0, 0, width, height);
                 }
-                isActive = true; lastUpdateTime = Date.now(); startBtn.innerText = "Pause";
+                isActive = true; 
+                lastUpdateTime = Date.now(); 
+                startBtn.innerText = "Pause";
             } else { 
-                isActive = false; startBtn.innerText = "Fortsetzen"; 
+                isActive = false; 
+                startBtn.innerText = "Fortsetzen"; 
                 if (particles.length === 0) dragHint.classList.remove('hidden'); 
             }
+            // Position sofort aktualisieren, da sich die Höhe der Controls geändert hat
+            updateControlPosition();
         });
         
         resetBtn.addEventListener('click', resetSession);
@@ -899,6 +874,9 @@
             startBtn.innerText = "Start"; settingsGroup.classList.remove('hidden'); resetBtn.classList.add('hidden');
             dragHint.innerText = "Zum Positionieren ziehen"; dragHint.classList.remove('hidden', 'disabled-hint');
             lastUpdateTime = 0;
+            
+            // UI Position auffrischen
+            updateControlPosition();
             
             // Security-Fix: replaceState in try-catch für Blob/Iframe-Support
             try {
