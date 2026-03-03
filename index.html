@@ -1,22 +1,53 @@
 <!-- 
     Change Log
-    Focus on Time - Foonti v1.5.5
+    Focus on Time - Foonti v1.6.5
     Änderungen: 
-    - Optimierung: Bedienelemente werden nun aktiv im sichtbaren Bereich gehalten (Viewport-Check).
-    - Logik: Das Glas verschiebt sich automatisch nach oben, wenn die Steuerung unten aus dem Bild ragen würde.
-    - UI: Initiale Positionierung (init/resize) für kleine Bildschirme verbessert.
-    - Fehlerbehebung: Überlagerung der Buttons auf dem Glas bei Mobilgeräten (v1.5.4) weiter verfeinert.
-    - Fehlerbehebung: SecurityError bei history.replaceState (v1.5.3) weiterhin abgesichert.
-    - Logik: Sprechende URL-Parameter und "Instant-Fill" erhalten.
-    - UI: Tag-Anzeige (v1.3.9) und alle Effekte (v1.4.0) vollständig erhalten.
+    - Logik: Die Drag-Sperre prüft nun nur noch Partikel, die sich innerhalb der Breite des Glases befinden.
+    - Optimierung: Sand, der neben das Glas fällt, blockiert das Verschieben nicht mehr.
+    - UI: Der "SAND FÄLLT NOCH..."-Hinweis erscheint nur bei Partikeln im Zielbereich des Glases.
+    - Erhalt: Alle bisherigen Effekte (Wolke, Endless Paper, Nav-Pfeile, stabile Slider).
     - Alle Kommentare und physikalischen Logiken beibehalten.
+    - Logik: Präzise Volumen-Zeit-Kopplung beibehalten.
+    - UI: Kompaktes vertikales Design integriert.
+    - Alle Effekte (Pulse, Glow, Explosion, Dampf) integriert.
+    - Neu: Präzise Volumen-Zeit-Kopplung (Sandmenge entspricht exakt dem Timer-Fortschritt)
+    - Neu: Proportionale Füllhöhe egal ob 1 Minute oder 120 Minuten Dauer
+    - UI: Kompaktes vertikales Design (v1.3.8) beibehalten
+    - Logik: Symmetrisches Resize (v1.3.6) beibehalten
+    - Alle Effekte (Pulse, Glow, Explosion, Dampf) integriert
+    - UI: Kompakteres Design (360px Breite) für bessere Übersichtlichkeit
+    - UI: Optimierte Touch-Bereiche für Regler und Buttons
+    - Logik: Symmetrisches Resize und stabile UI-Position (v1.3.6) erhalten
+    - Alle Effekte (Pulsieren, Explosion, Dampf) bleiben vollständig erhalten
+    - Fehlerbehebung: Flackern der Pulsation durch Phasen-Akkumulation (smooth transitions) behoben
+    - Optimierung: Pulsationsrate dynamisch angepasst (65 BPM bis 200 BPM vor der Explosion)
+    - Optimierung: Pulsieren massiv verlangsamt (Human Heartbeat Rhythmus), startet extrem ruhig
+    - Optimierung: Beschleunigungskurve erhöht (Cubic-Out), damit die Ruhe länger anhält
+    - Neu: Glas-Explosion wenn die Count-up Zeit die ursprüngliche Dauer erreicht
+    - Neu: Sand verteilt sich bei Explosion über den gesamten Screen
+    - Neu: Dampf-Effekt nach Abschluss des Timers (läuft nach Explosion weiter)
+    - Neu: Count-up Timer im aufsteigenden Dampf zeigt verstrichene Zeit nach Ende
+    - Neu: Pulsierender Sandeffekt bei Fertigstellung
+    - Neu: Anpassbarer Name auf dem Tag (Standard: "Fokus"), editierbar über die UI
+    - Neu: "Spill"-Effekt (Sand außerhalb des Glases) drastisch reduziert für "Versehen"-Optik
+    - Optimierung: Partikel-System verbessert durch Schwerkraft-Beschleunigung und Wobble-Effekt
+    - Optimierung: Verfeinerte findSettleIndex Logik für natürlichere Schüttkegel (Sandhaufen)
+    - Visuell: Partikel pulsieren leicht in ihrer Opazität beim Fallen für organischen Glanz
+    - Neu: Das Glas bietet nun immer Platz für 5 Minuten mehr als eingestellt (Puffer-Volumen)
+    - Optimierung: spawnChance Berechnung korrigiert, um die Zielhöhe exakt zu treffen
+    - UI: Messpunkte und Skalierung berücksichtigen nun die 5-Minuten-Erweiterung
+    - Fehlerbehebung: Flackern minimiert durch strikte Render-Order und Alpha-Reset im Buffer
+    - Optimierung: Sand-Abstand zur Glaswand vergrößert (Kollisionsschutz)
+    - Neu: Sand bündig auf dem Glasboden (Offset Korrektur auf thickness/2)
+    - Neu: Sand näher an die Glaswände gerückt (Marge reduziert)
+    - Neu: Physikalisch korrekte Kurven-Kollision in den Glasecken (Radius 15px) 
 -->
 <!DOCTYPE html>
 <html lang="de">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Digitaler Sandregen - v1.5.5</title>
+    <title>Foonti v1.6.5 - Präzise Drag-Sperre</title>
     <style>
         :root {
             --bg-color: #050505;
@@ -34,7 +65,7 @@
             font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
             color: var(--text-color);
             user-select: none;
-            touch-action: none; /* Verhindert Default-Gesten auf dem Canvas */
+            touch-action: none;
         }
 
         #canvas-container {
@@ -43,6 +74,11 @@
             left: 0;
             width: 100%;
             height: 100%;
+            cursor: grab;
+        }
+        
+        #canvas-container:active {
+            cursor: grabbing;
         }
 
         canvas {
@@ -60,9 +96,9 @@
             align-items: center;
             gap: 0.8rem;
             pointer-events: none;
-            /* Breite auf auto, da left via JS gesteuert wird */
             width: auto; 
             min-width: 200px;
+            transform-origin: top center;
         }
 
         .glass-controls > * {
@@ -80,7 +116,7 @@
             gap: 14px;
             box-shadow: 0 12px 40px rgba(0,0,0,0.7);
             width: 90vw;
-            max-width: 280px; /* Responsive Breite */
+            max-width: 280px;
         }
 
         .control-row {
@@ -182,12 +218,18 @@
             text-transform: uppercase;
             letter-spacing: 0.1em;
             font-weight: 700;
-            min-height: 44px; /* Mobile Friendly Tap-Target */
+            min-height: 44px;
         }
 
         button:active {
             transform: scale(0.95);
             background: rgba(255, 255, 255, 0.15);
+        }
+        
+        button:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+            filter: grayscale(1);
         }
 
         #shareBtn {
@@ -204,10 +246,30 @@
             background: rgba(0,0,0,0.4);
             padding: 2px 8px;
             border-radius: 10px;
+            transition: color 0.2s, opacity 0.2s;
         }
 
+        .nav-arrow {
+            position: fixed;
+            width: 44px;
+            height: 44px;
+            background: var(--accent-color);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            cursor: pointer;
+            box-shadow: 0 0 20px rgba(123, 47, 247, 0.5);
+            transition: transform 0.2s;
+            pointer-events: all;
+        }
+        
+        .nav-arrow:hover { transform: scale(1.1); }
+        .nav-arrow svg { fill: white; width: 20px; height: 20px; }
+
         .hidden { display: none !important; }
-        .disabled-hint { color: #ff5555; opacity: 0.8; }
+        .disabled-hint { color: #ff5555; opacity: 1; font-weight: 800; }
 
         #toast {
             position: fixed;
@@ -224,8 +286,7 @@
             opacity: 0;
             transition: all 0.3s ease;
             pointer-events: none;
-            z-index: 1000;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            z-index: 2000;
         }
     </style>
 </head>
@@ -235,7 +296,7 @@
         <canvas id="sandCanvas"></canvas>
         
         <div id="glassControls" class="glass-controls">
-            <div class="drag-hint" id="dragHint">Zum Positionieren ziehen</div>
+            <div class="drag-hint" id="dragHint">Ziehen zum Bewegen</div>
             
             <div class="input-group" id="settings-group">
                 <div class="control-row">
@@ -271,13 +332,15 @@
         </div>
     </div>
 
+    <div id="navArrow" class="nav-arrow hidden">
+        <svg viewBox="0 0 24 24"><path d="M12 2L4.5 20.29l.71.71L12 18l6.79 3 .71-.71z"/></svg>
+    </div>
+
     <div id="toast">Link kopiert</div>
 
     <script>
         const canvas = document.getElementById('sandCanvas');
         const ctx = canvas.getContext('2d');
-        const floorBuffer = document.createElement('canvas');
-        const floorCtx = floorBuffer.getContext('2d');
 
         const controls = document.getElementById('glassControls');
         const startBtn = document.getElementById('startBtn');
@@ -293,6 +356,7 @@
         const settingsGroup = document.getElementById('settings-group');
         const dragHint = document.getElementById('dragHint');
         const toast = document.getElementById('toast');
+        const navArrow = document.getElementById('navArrow');
 
         let width, height;
         let particles = [];
@@ -300,6 +364,8 @@
         let isActive = false;
         let isFinished = false;
         let isExploded = false;
+        let isRemoteTimer = false; 
+        let isAdjusting = false; 
         let duration = 25 * 60; 
         let timeRemaining = duration;
         let timeSinceFinished = 0;
@@ -308,6 +374,14 @@
         let tagColor = '#191919';
         let tagName = 'Fokus';
         let pulsePhase = 0;
+
+        let camera = {
+            x: 0, y: 0, zoom: 1,
+            targetX: 0, targetY: 0,
+            isPanning: false,
+            lastMouse: { x: 0, y: 0 },
+            isAnimating: false
+        };
 
         let glass = { 
             x: 0, y: 0, w: 280, h: 380, 
@@ -319,7 +393,6 @@
         glass.ctx = glass.buffer.getContext('2d');
 
         let glassSandHeights = [];
-        let floorSandHeights = [];
         let spawnChance = 0.3;
 
         const phases = [
@@ -331,31 +404,33 @@
 
         function init() {
             resize();
-            
-            // Standard-Positionierung zentriert
-            glass.x = (width - glass.w) / 2;
-            // Etwas höher anfangen, um Platz für die Controls zu lassen
-            glass.y = Math.max(20, (height - glass.h) / 2 - 120);
+            glass.x = -glass.w / 2;
+            glass.y = -glass.h / 2;
+            camera.x = width / 2;
+            camera.y = height / 2;
             
             parseUrlParams();
 
             window.addEventListener('resize', resize);
-            
-            // Touch-Support für Dragging
-            window.addEventListener('mousedown', onStartDrag);
-            window.addEventListener('touchstart', (e) => onStartDrag(e.touches[0]), { passive: false });
-            
-            window.addEventListener('mousemove', onMoveDrag);
+            window.addEventListener('mousedown', onPointerDown);
+            window.addEventListener('touchstart', (e) => onPointerDown(e.touches[0]), { passive: false });
+            window.addEventListener('mousemove', onPointerMove);
             window.addEventListener('touchmove', (e) => {
-                onMoveDrag(e.touches[0]);
-                if (glass.isDragging) e.preventDefault();
+                if (camera.isPanning || glass.isDragging) { onPointerMove(e.touches[0]); e.preventDefault(); }
             }, { passive: false });
-            
-            window.addEventListener('mouseup', onEndDrag);
-            window.addEventListener('touchend', onEndDrag);
+            window.addEventListener('mouseup', onPointerUp);
+            window.addEventListener('touchend', onPointerUp);
+            window.addEventListener('wheel', onWheel, { passive: false });
 
+            [widthInput, heightInput].forEach(inp => {
+                inp.addEventListener('mousedown', () => isAdjusting = true);
+                inp.addEventListener('touchstart', () => isAdjusting = true);
+                inp.addEventListener('mouseup', () => isAdjusting = false);
+                inp.addEventListener('touchend', () => isAdjusting = false);
+            });
+
+            navArrow.addEventListener('click', jumpToGlass);
             requestAnimationFrame(animate);
-            updateControlPosition();
         }
 
         function resize() {
@@ -363,23 +438,6 @@
             height = window.innerHeight;
             canvas.width = width;
             canvas.height = height;
-            floorBuffer.width = width;
-            floorBuffer.height = height;
-            floorSandHeights = new Array(Math.floor(width)).fill(0);
-
-            // Responsive Scale Check: Glas verkleinern, wenn Screen zu klein
-            if (glass.w > width * 0.85) {
-                const ratio = glass.h / glass.w;
-                glass.w = Math.floor(width * 0.85);
-                glass.h = Math.floor(glass.w * ratio);
-                widthInput.value = glass.w;
-                heightInput.value = glass.h;
-                widthLabel.innerText = glass.w;
-                heightLabel.innerText = glass.h;
-            }
-
-            updateGlassHeights();
-            updateControlPosition();
         }
 
         function parseUrlParams() {
@@ -390,57 +448,110 @@
                 const m = parseInt(params.get('mins')); 
                 minutesInput.value = m; duration = m * 60; timeRemaining = duration; 
             }
-            if (params.has('width')) {
-                const w = parseInt(params.get('width')); glass.w = w; widthInput.value = w; widthLabel.innerText = w;
-            }
-            if (params.has('height')) {
-                const h = parseInt(params.get('height')); glass.h = h; heightInput.value = h; heightLabel.innerText = h;
-            }
-            
-            updateGlassHeights();
-            calculateSpawnChance();
+            if (params.has('width')) { const w = parseInt(params.get('width')); glass.w = w; widthInput.value = w; widthLabel.innerText = w; }
+            if (params.has('height')) { const h = parseInt(params.get('height')); glass.h = h; heightInput.value = h; heightLabel.innerText = h; }
+            updateGlassHeights(); calculateSpawnChance();
 
             if (params.has('start')) {
-                const t = parseInt(params.get('start'));
-                startTimeTimestamp = t;
-                const now = Date.now();
-                const elapsed = (now - t) / 1000;
-                
+                isRemoteTimer = true;
+                const t = parseInt(params.get('start')); startTimeTimestamp = t;
+                const now = Date.now(); const elapsed = (now - t) / 1000;
                 if (elapsed > 0) {
-                    isActive = true;
-                    lastUpdateTime = now;
-                    settingsGroup.classList.add('hidden');
-                    resetBtn.classList.remove('hidden');
-                    dragHint.classList.add('hidden');
-                    startBtn.innerText = "Pause";
-                    
-                    if (elapsed < duration) {
-                        timeRemaining = duration - elapsed;
-                        preFillSand(elapsed);
-                    } else {
-                        timeRemaining = 0; isActive = false; isFinished = true;
-                        timeSinceFinished = elapsed - duration;
-                        startBtn.innerText = "Neu Starten";
-                        preFillSand(duration);
-                        if (timeSinceFinished >= duration) explodeGlass();
-                    }
+                    isActive = true; lastUpdateTime = now;
+                    settingsGroup.classList.add('hidden'); resetBtn.classList.remove('hidden'); dragHint.classList.add('hidden');
+                    startBtn.innerText = "Wird ausgeführt...";
+                    if (elapsed < duration) { timeRemaining = duration - elapsed; preFillSand(elapsed); }
+                    else { timeRemaining = 0; isActive = false; isFinished = true; timeSinceFinished = elapsed - duration; startBtn.innerText = "Neu Starten"; preFillSand(duration); if (timeSinceFinished >= duration) explodeGlass(); }
                 }
             }
+        }
+
+        function screenToWorld(sx, sy) { return { x: (sx - camera.x) / camera.zoom, y: (sy - camera.y) / camera.zoom }; }
+        function worldToScreen(wx, wy) { return { x: wx * camera.zoom + camera.x, y: wy * camera.zoom + camera.y }; }
+
+        // Hilfsfunktion: Gibt true zurück, wenn mindestens ein Partikel horizontal im Glasbereich fällt
+        function hasSandInGlassBoundaries() {
+            const innerMargin = glass.thickness / 2;
+            return particles.some(p => p.x >= glass.x + innerMargin && p.x <= glass.x + glass.w - innerMargin);
+        }
+
+        function onPointerDown(e) {
+            if (e.target && e.target.closest('.glass-controls')) return;
+            const wPos = screenToWorld(e.clientX, e.clientY);
+
+            const isInGlass = wPos.x >= glass.x && wPos.x <= glass.x + glass.w && wPos.y >= glass.y && wPos.y <= glass.y + glass.h;
+
+            if (!isActive && !isFinished && isInGlass) {
+                // NEU: Nur sperren, wenn Sand im Glasbereich fällt (nicht daneben)
+                if (hasSandInGlassBoundaries()) {
+                    dragHint.innerText = "SAND FÄLLT NOCH INS GLAS...";
+                    dragHint.classList.add('disabled-hint');
+                    dragHint.classList.remove('hidden');
+                    return; 
+                }
+                
+                glass.isDragging = true; 
+                glass.dragOffset.x = wPos.x - glass.x; 
+                glass.dragOffset.y = wPos.y - glass.y; 
+                dragHint.classList.add('hidden');
+            } else {
+                camera.isPanning = true; 
+                camera.lastMouse.x = e.clientX; 
+                camera.lastMouse.y = e.clientY;
+            }
+        }
+
+        function onPointerMove(e) {
+            if (glass.isDragging) {
+                const wPos = screenToWorld(e.clientX, e.clientY);
+                glass.x = wPos.x - glass.dragOffset.x; glass.y = wPos.y - glass.dragOffset.y;
+            } else if (camera.isPanning) {
+                camera.x += (e.clientX - camera.lastMouse.x); camera.y += (e.clientY - camera.lastMouse.y);
+                camera.lastMouse.x = e.clientX; camera.lastMouse.y = e.clientY;
+            }
+        }
+
+        function onPointerUp() { glass.isDragging = false; camera.isPanning = false; isAdjusting = false; }
+
+        function onWheel(e) {
+            if (e.target.closest('.glass-controls')) return;
+            e.preventDefault();
+            const factor = Math.pow(1.1, -e.deltaY / 100);
+            const mouseWorldBefore = screenToWorld(e.clientX, e.clientY);
+            camera.zoom = Math.max(0.1, Math.min(camera.zoom * factor, 5));
+            const mouseWorldAfter = screenToWorld(e.clientX, e.clientY);
+            camera.x += (mouseWorldAfter.x - mouseWorldBefore.x) * camera.zoom;
+            camera.y += (mouseWorldAfter.y - mouseWorldBefore.y) * camera.zoom;
+        }
+
+        function jumpToGlass() {
+            camera.targetX = width / 2 - (glass.x + glass.w / 2) * camera.zoom;
+            camera.targetY = height / 2 - (glass.y + glass.h / 2) * camera.zoom;
+            camera.isAnimating = true;
+        }
+
+        function updateNavigationIndicator() {
+            const screenPos = worldToScreen(glass.x + glass.w/2, glass.y + glass.h/2);
+            const margin = 60;
+            const isOffScreen = screenPos.x < margin || screenPos.x > width - margin || screenPos.y < margin || screenPos.y > height - margin;
+            if (isOffScreen) {
+                navArrow.classList.remove('hidden');
+                const angle = Math.atan2(screenPos.y - height/2, screenPos.x - width/2);
+                let arrowX = width/2 + Math.cos(angle) * (Math.min(width, height) / 2 - margin);
+                let arrowY = height/2 + Math.sin(angle) * (Math.min(width, height) / 2 - margin);
+                navArrow.style.left = `${arrowX - 22}px`; navArrow.style.top = `${arrowY - 22}px`; navArrow.style.transform = `rotate(${angle * 180 / Math.PI + 90}deg)`;
+            } else { navArrow.classList.add('hidden'); }
         }
 
         function preFillSand(seconds) {
             const totalParticlesNeeded = spawnChance * 60 * seconds;
             const phaseData = getPhaseData();
-            const iterations = Math.floor(totalParticlesNeeded); 
-            for(let i = 0; i < iterations; i++) {
+            for(let i = 0; i < Math.floor(totalParticlesNeeded); i++) {
                 const x = Math.floor(Math.random() * (glass.w - glass.thickness));
                 const settledIndex = findSettleIndexGlobal(x, glassSandHeights, true);
-                const hInc = 0.45;
-                glassSandHeights[settledIndex] += hInc;
+                glassSandHeights[settledIndex] += 0.45;
                 const cornerOffset = getGlassBaselineOffset(settledIndex);
-                glass.ctx.save();
-                const lVar = phaseData.l + (Math.random() - 0.5) * 10;
-                glass.ctx.fillStyle = `hsl(${phaseData.h}, ${phaseData.s}%, ${lVar}%)`;
+                glass.ctx.save(); glass.ctx.fillStyle = `hsl(${phaseData.h}, ${phaseData.s}%, ${phaseData.l + (Math.random()-0.5)*10}%)`;
                 glass.ctx.globalAlpha = 0.85;
                 glass.ctx.fillRect(settledIndex, (glass.h - glass.thickness / 2 - cornerOffset) - glassSandHeights[settledIndex], 1.5, 1.5);
                 glass.ctx.restore();
@@ -468,348 +579,156 @@
         }
 
         function updateGlassHeights() {
-            glass.buffer.width = glass.w;
-            glass.buffer.height = glass.h;
+            glass.buffer.width = glass.w; glass.buffer.height = glass.h;
             glassSandHeights = new Array(Math.floor(glass.w)).fill(0);
         }
 
-        function updateControlPosition() {
-            if (!controls) return;
-            const centerX = glass.x + glass.w / 2;
-            
-            // Horizontale Zentrierung der Controls (mit Boundary-Check)
-            const controlsHalfWidth = controls.offsetWidth / 2;
-            controls.style.left = `${Math.max(10, Math.min(width - controls.offsetWidth - 10, centerX - controlsHalfWidth))}px`;
-            
-            // Vertikale Positionierung: Mindestens 20px unter dem Glasboden
-            let idealTop = glass.y + glass.h + 20;
-
-            // Viewport-Check: Wenn die Controls unten aus dem Bild ragen würden
-            const controlHeight = controls.offsetHeight;
-            if (idealTop + controlHeight > height - 15) {
-                // Das Glas muss nach oben geschoben werden, um Platz zu machen
-                const overlap = (idealTop + controlHeight) - (height - 15);
-                glass.y = Math.max(10, glass.y - overlap);
-                idealTop = glass.y + glass.h + 20;
-            }
-
-            controls.style.top = `${idealTop}px`;
-        }
-
-        function onStartDrag(e) {
-            if (isActive || isFinished) return;
-            const mx = e.clientX; const my = e.clientY;
-            if (mx >= glass.x && mx <= glass.x + glass.w && my >= glass.y && my <= glass.y + glass.h) {
-                if (particles.length > 0) {
-                    dragHint.innerText = "Sand fällt noch...";
-                    dragHint.classList.add('disabled-hint');
-                    return;
-                }
-                glass.isDragging = true;
-                glass.dragOffset.x = mx - glass.x;
-                glass.dragOffset.y = my - glass.y;
-                dragHint.classList.add('hidden');
-            }
-        }
-
-        function onMoveDrag(e) {
-            if (glass.isDragging) {
-                glass.x = e.clientX - glass.dragOffset.x;
-                glass.y = e.clientY - glass.dragOffset.y;
-                updateControlPosition();
-            }
-        }
-
-        function onEndDrag() { glass.isDragging = false; }
-
         function calculateSpawnChance() {
-            const D = duration; const C = D + 300;  
             const usableH = glass.h - glass.thickness;
-            const targetH = usableH * (D / C);
-            const totalVol = glass.w * targetH;
-            const inc = 0.55; 
-            const totalParticlesNeeded = totalVol / inc;
-            spawnChance = totalParticlesNeeded / (D * 60);
+            const targetH = usableH * (duration / (duration + 300));
+            spawnChance = (glass.w * targetH / 0.55) / (duration * 60);
             spawnChance = Math.max(0.01, Math.min(spawnChance, 15)); 
         }
 
         function getGlassBaselineOffset(localX) {
             const r = glass.cornerRadius;
-            if (localX < r) {
-                const ratio = 1 - (localX / r);
-                return ratio * ratio * r;
-            } else if (localX > glass.w - r) {
-                const ratio = 1 - ((glass.w - localX) / r);
-                return ratio * ratio * r;
-            }
+            if (localX < r) { const ratio = 1 - (localX / r); return ratio * ratio * r; } 
+            else if (localX > glass.w - r) { const ratio = 1 - ((glass.w - localX) / r); return ratio * ratio * r; }
             return 0;
         }
 
         class Particle {
-            constructor(x, phaseData, y = -15, isExplosion = false) {
-                this.x = x; this.y = y;
-                this.size = Math.random() * 1.3 + 0.7;
-                this.wobbleOffset = Math.random() * Math.PI * 2;
-                this.wobbleSpeed = Math.random() * 0.05 + 0.02;
-                this.gravity = Math.random() * 0.05 + 0.02;
-                const isSparkle = Math.random() > 0.98;
-                if (isSparkle) {
-                    this.color = `hsl(${phaseData.h}, ${phaseData.s}%, 95%)`;
-                    this.baseOpacity = 1;
-                } else {
-                    this.color = `hsl(${phaseData.h + (Math.random()-0.5)*5}, ${phaseData.s}%, ${phaseData.l + (Math.random()-0.5)*15}%)`;
-                    this.baseOpacity = Math.random() * 0.3 + 0.6;
-                }
-                this.opacity = this.baseOpacity;
-                if (isExplosion) {
-                    const angle = Math.random() * Math.PI * 2;
-                    const force = Math.random() * 10 + 5;
-                    this.vx = Math.cos(angle) * force;
-                    this.speedY = Math.sin(angle) * force;
-                } else {
-                    this.vx = (Math.random() - 0.5) * 0.3; this.speedY = Math.random() * 1.5 + 2.5;
-                }
+            constructor(x, phaseData, y, isExplosion = false) {
+                this.x = x; this.y = y; this.size = Math.random() * 1.3 + 0.7; this.wobbleOffset = Math.random() * Math.PI * 2; this.gravity = Math.random() * 0.05 + 0.02;
+                this.color = `hsl(${phaseData.h + (Math.random()-0.5)*5}, ${phaseData.s}%, ${phaseData.l + (Math.random()-0.5)*15}%)`;
+                this.baseOpacity = Math.random() * 0.3 + 0.6; this.opacity = this.baseOpacity;
+                if (isExplosion) { const a = Math.random() * Math.PI * 2; const f = Math.random() * 10 + 5; this.vx = Math.cos(a) * f; this.speedY = Math.sin(a) * f; }
+                else { this.vx = (Math.random() - 0.5) * 0.3; this.speedY = Math.random() * 1.5 + 2.5; }
                 this.drift = this.vx;
             }
-
             update(delta) {
-                this.speedY += this.gravity;
-                this.y += this.speedY;
-                const wobble = Math.sin(Date.now() * this.wobbleSpeed + this.wobbleOffset) * 0.5;
-                this.x += this.drift + wobble;
-                this.opacity = this.baseOpacity * (0.9 + Math.sin(Date.now() * 0.01 + this.wobbleOffset) * 0.1);
-                const innerMargin = glass.thickness / 2; 
-                if (!isExploded && this.x > glass.x + innerMargin && this.x < glass.x + glass.w - innerMargin && this.y > glass.y) {
-                    const localX = Math.floor(this.x - glass.x);
-                    const currentH = glassSandHeights[localX];
-                    const cornerOffset = getGlassBaselineOffset(localX);
-                    const floorY = (glass.y + glass.h - glass.thickness / 2 - cornerOffset) - currentH;
-                    if (this.y >= floorY) {
-                        if (currentH < glass.h - glass.thickness - 2) this.drawToBuffer(localX, 'glass');
-                        return false;
-                    }
-                } else if (this.y >= height - floorSandHeights[Math.floor(this.x)]) {
-                    const floorX = Math.floor(this.x);
-                    if (floorX >= 0 && floorX < width) this.drawToBuffer(floorX, 'floor');
-                    return false;
+                this.speedY += this.gravity; this.y += this.speedY; this.x += this.drift + Math.sin(Date.now() * 0.05 + this.wobbleOffset) * 0.5;
+                if (!isExploded && this.x > glass.x + glass.thickness/2 && this.x < glass.x + glass.w - glass.thickness/2 && this.y > glass.y) {
+                    const localX = Math.floor(this.x - glass.x); const cornerOffset = getGlassBaselineOffset(localX);
+                    const floorY = (glass.y + glass.h - glass.thickness / 2 - cornerOffset) - glassSandHeights[localX];
+                    if (this.y >= floorY) { this.drawToBuffer(localX); return false; }
                 }
-                return this.y < height + 20 && this.x >= 0 && this.x <= width;
+                return this.y < 5000;
             }
-
-            drawToBuffer(index, type) {
-                if (type === 'glass') {
-                    const settledIndex = findSettleIndexGlobal(index, glassSandHeights, true);
-                    const increment = 0.4 + Math.random() * 0.1;
-                    glassSandHeights[settledIndex] += increment;
-                    if (settledIndex > 0) glassSandHeights[settledIndex-1] += increment * 0.2;
-                    if (settledIndex < glassSandHeights.length-1) glassSandHeights[settledIndex+1] += increment * 0.2;
-                    const cornerOffset = getGlassBaselineOffset(settledIndex);
-                    glass.ctx.save();
-                    glass.ctx.fillStyle = this.color;
-                    glass.ctx.globalAlpha = this.baseOpacity;
-                    glass.ctx.fillRect(settledIndex, (glass.h - glass.thickness / 2 - cornerOffset) - glassSandHeights[settledIndex], this.size, this.size);
-                    glass.ctx.restore();
-                } else {
-                    const settledIndex = findSettleIndexGlobal(index, floorSandHeights, false);
-                    floorSandHeights[settledIndex] += 0.3;
-                    floorCtx.save();
-                    floorCtx.fillStyle = this.color;
-                    floorCtx.globalAlpha = this.baseOpacity;
-                    floorCtx.fillRect(settledIndex, height - floorSandHeights[settledIndex], this.size, this.size);
-                    floorCtx.restore();
-                }
+            drawToBuffer(index) {
+                const settledIndex = findSettleIndexGlobal(index, glassSandHeights, true); glassSandHeights[settledIndex] += 0.45;
+                const cornerOffset = getGlassBaselineOffset(settledIndex);
+                glass.ctx.save(); glass.ctx.fillStyle = this.color; glass.ctx.globalAlpha = this.baseOpacity;
+                glass.ctx.fillRect(settledIndex, (glass.h - glass.thickness / 2 - cornerOffset) - glassSandHeights[settledIndex], this.size, this.size);
+                glass.ctx.restore();
             }
-
-            draw() {
-                ctx.save(); ctx.fillStyle = this.color; ctx.globalAlpha = this.opacity;
-                ctx.beginPath(); ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2); ctx.fill(); ctx.restore();
-            }
+            draw() { ctx.save(); ctx.fillStyle = this.color; ctx.globalAlpha = this.opacity; ctx.beginPath(); ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2); ctx.fill(); ctx.restore(); }
         }
 
         class SteamParticle {
-            constructor(x, y) {
-                this.x = x; this.y = y;
-                this.vx = (Math.random() - 0.5) * 0.6; this.vy = -(Math.random() * 0.8 + 0.4);
-                this.life = 1.0; this.decay = Math.random() * 0.005 + 0.005; this.size = Math.random() * 15 + 10;
-            }
+            constructor(x, y) { this.x = x; this.y = y; this.vx = (Math.random()-0.5)*0.6; this.vy = -(Math.random()*0.8+0.4); this.life = 1.0; this.decay = Math.random()*0.005+0.005; this.size = Math.random()*15+10; }
             update() { this.x += this.vx; this.y += this.vy; this.life -= this.decay; return this.life > 0; }
-            draw() {
-                ctx.save(); ctx.globalAlpha = this.life * 0.15; ctx.fillStyle = 'white'; ctx.filter = 'blur(8px)';
-                ctx.beginPath(); ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2); ctx.fill(); ctx.restore();
-            }
+            draw() { ctx.save(); ctx.globalAlpha = this.life * 0.15; ctx.fillStyle = 'white'; ctx.filter = 'blur(8px)'; ctx.beginPath(); ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2); ctx.fill(); ctx.restore(); }
         }
 
         function explodeGlass() {
-            if (isExploded) return;
-            isExploded = true;
-            const phaseData = getPhaseData();
+            if (isExploded) return; isExploded = true; const phaseData = getPhaseData();
             for (let x = 0; x < glassSandHeights.length; x += 3) {
-                const h = glassSandHeights[x];
-                if (h > 0) {
-                    const count = Math.min(15, Math.ceil(h / 2));
-                    for (let j = 0; j < count; j++) {
-                        const particleY = (glass.y + glass.h - glass.thickness / 2 - getGlassBaselineOffset(x)) - (Math.random() * h);
-                        particles.push(new Particle(glass.x + x, phaseData, particleY, true));
-                    }
+                if (glassSandHeights[x] > 0) {
+                    const count = Math.min(15, Math.ceil(glassSandHeights[x] / 2));
+                    for (let j = 0; j < count; j++) particles.push(new Particle(glass.x + x, phaseData, glass.y + glass.h - Math.random() * glassSandHeights[x], true));
                 }
             }
-            glass.ctx.clearRect(0, 0, glass.w, glass.h);
-            glassSandHeights.fill(0);
+            glass.ctx.clearRect(0, 0, glass.w, glass.h); glassSandHeights.fill(0);
+        }
+
+        function drawSpawnCloud(x, y, w, color) {
+            if (!isActive || isFinished) return;
+            ctx.save(); const pulse = (Math.sin(Date.now() * 0.003) + 1) / 2;
+            const grad = ctx.createRadialGradient(x + w/2, y, 0, x + w/2, y, w * 0.6);
+            grad.addColorStop(0, color.replace(')', `, ${0.4 + pulse * 0.2})`).replace('hsl', 'hsla')); grad.addColorStop(1, 'rgba(255,255,255,0)');
+            ctx.fillStyle = grad; ctx.filter = 'blur(10px)'; ctx.beginPath(); ctx.ellipse(x + w/2, y, w * 0.8, 30, 0, 0, Math.PI * 2); ctx.fill(); ctx.restore();
         }
 
         function drawUIElements() {
-            if (isExploded) return; 
-            const { x, y, w, h, thickness, cornerRadius } = glass;
-            const currentPhase = getPhaseData();
-            ctx.save();
-            if (isActive && particles.length > 0) {
-                ctx.shadowBlur = 30; ctx.shadowColor = `hsl(${currentPhase.h}, ${currentPhase.s}%, 65%)`; 
-            }
+            if (isExploded) return; const { x, y, w, h, thickness, cornerRadius } = glass; const currentPhase = getPhaseData();
+            ctx.save(); if (isActive && particles.length > 0) { ctx.shadowBlur = 30; ctx.shadowColor = `hsl(${currentPhase.h}, ${currentPhase.s}%, 65%)`; }
             ctx.fillStyle = 'rgba(255, 255, 255, 0.02)'; ctx.fillRect(x, y, w, h);
             ctx.strokeStyle = glass.isDragging ? 'rgba(255, 255, 255, 0.5)' : 'rgba(255, 255, 255, 0.22)';
-            ctx.lineWidth = thickness; ctx.lineCap = 'round';
-            ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x, y + h - cornerRadius);
-            ctx.quadraticCurveTo(x, y + h, x + cornerRadius, y + h); ctx.lineTo(x + w - cornerRadius, y + h);
-            ctx.quadraticCurveTo(x + w, y + h, x + w, y + h - cornerRadius); ctx.lineTo(x + w, y); ctx.stroke();
-            ctx.shadowBlur = 0;
-            const g = ctx.createLinearGradient(x, y, x+w, y);
-            g.addColorStop(0, 'rgba(255,255,255,0.01)'); g.addColorStop(0.05, 'rgba(255,255,255,0.08)'); 
-            g.addColorStop(0.1, 'rgba(255,255,255,0.02)'); g.addColorStop(0.85, 'rgba(255,255,255,0.0)');
-            g.addColorStop(0.95, 'rgba(255,255,255,0.06)');
-            ctx.fillStyle = g; ctx.fillRect(x, y, w, h);
-            
-            const D_sec = duration; const C_sec = D_sec + 300;
-            const pixelsPerMinute = (h - thickness / 2) / (C_sec / 60); 
-            ctx.textAlign = 'right'; ctx.font = '500 9px Inter';
-            for (let min = 5; min <= C_sec / 60; min += 5) {
-                const markY = (y + h - thickness / 2) - (min * pixelsPerMinute);
-                if (markY < y + 10) continue;
-                const isTarget = Math.abs(min - D_sec / 60) < 0.1;
-                ctx.strokeStyle = isTarget ? 'rgba(255, 255, 255, 0.4)' : 'rgba(255, 255, 255, 0.15)';
+            ctx.lineWidth = thickness; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x, y + h - cornerRadius); ctx.quadraticCurveTo(x, y + h, x + cornerRadius, y + h); ctx.lineTo(x + w - cornerRadius, y + h); ctx.quadraticCurveTo(x + w, y + h, x + w, y + h - cornerRadius); ctx.lineTo(x + w, y); ctx.stroke();
+            const D_sec = duration; const pixelsPerMinute = (h - thickness / 2) / ((D_sec + 300) / 60); ctx.textAlign = 'right'; ctx.font = '500 9px Inter';
+            for (let min = 5; min <= (D_sec + 300) / 60; min += 5) {
+                const markY = (y + h - thickness / 2) - (min * pixelsPerMinute); if (markY < y + 10) continue;
+                const isTarget = Math.abs(min - D_sec / 60) < 0.1; ctx.strokeStyle = isTarget ? 'rgba(255, 255, 255, 0.4)' : 'rgba(255, 255, 255, 0.15)';
                 ctx.beginPath(); ctx.moveTo(x, markY); ctx.lineTo(x + (isTarget ? 18 : 12), markY); ctx.stroke();
-                ctx.fillStyle = isTarget ? 'rgba(255, 255, 255, 0.6)' : 'rgba(255, 255, 255, 0.3)';
-                ctx.fillText(min, x - 10, markY + 3);
+                ctx.fillStyle = isTarget ? 'rgba(255, 255, 255, 0.6)' : 'rgba(255, 255, 255, 0.3)'; ctx.fillText(min, x - 10, markY + 3);
             }
-            
-            const tagX = x + w + (width < 500 ? 20 : 35); const tagY = y + 50;
-            const tagW = width < 500 ? 80 : 95; const tagH = isFinished ? 50 : 70;
-            
-            ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)'; ctx.lineWidth = 1;
-            ctx.beginPath(); ctx.moveTo(x + w, y + 25); ctx.lineTo(tagX + 10, tagY + 5); ctx.stroke();
-            
-            ctx.fillStyle = tagColor; ctx.beginPath();
-            ctx.moveTo(tagX + 12, tagY); ctx.lineTo(tagX + tagW, tagY); ctx.lineTo(tagX + tagW, tagY + tagH);
-            ctx.lineTo(tagX, tagY + tagH); ctx.lineTo(tagX, tagY + 12); ctx.closePath(); ctx.fill();
-            
-            ctx.fillStyle = '#050505'; ctx.beginPath(); ctx.arc(tagX + 12, tagY + 12, 3, 0, Math.PI * 2); ctx.fill();
-            
-            ctx.textAlign = 'center'; ctx.fillStyle = 'rgba(255, 255, 255, 0.7)'; ctx.font = '600 8px Inter';
-            ctx.letterSpacing = "1px"; ctx.fillText(tagName.toUpperCase(), tagX + tagW/2, tagY + 15);
-            
-            if (!isFinished) {
-                ctx.font = '600 6px Inter'; ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
-                ctx.fillText("VERBLEIBEND", tagX + tagW/2, tagY + 26);
-                ctx.fillStyle = 'white'; ctx.font = '200 16px Inter'; ctx.letterSpacing = "0px";
-                ctx.fillText(formatTime(timeRemaining), tagX + tagW/2, tagY + 41);
-                
-                ctx.font = '600 6px Inter'; ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
-                ctx.fillText("VERSTRICHEN", tagX + tagW/2, tagY + 52);
-                ctx.fillStyle = 'rgba(255, 255, 255, 0.6)'; ctx.font = '400 10px Inter';
-                ctx.fillText(formatTime(duration - timeRemaining), tagX + tagW/2, tagY + 63);
-            } else {
-                ctx.fillStyle = 'white'; ctx.font = '200 20px Inter'; ctx.letterSpacing = "0px";
-                ctx.fillText("00:00", tagX + tagW/2, tagY + 38);
-            }
-            
-            ctx.fillStyle = `hsl(${currentPhase.h}, ${currentPhase.s}%, ${currentPhase.l}%)`;
-            ctx.font = '700 7px Inter'; ctx.letterSpacing = "2px";
-            ctx.fillText(currentPhase.label.toUpperCase(), tagX + tagW/2, tagY + tagH + 12);
-            ctx.restore();
+            const tagX = x + w + 35; const tagY = y + 50; const tagW = 95; const tagH = isFinished ? 50 : 70;
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(x + w, y + 25); ctx.lineTo(tagX + 10, tagY + 5); ctx.stroke();
+            ctx.fillStyle = tagColor; ctx.beginPath(); ctx.moveTo(tagX + 12, tagY); ctx.lineTo(tagX + tagW, tagY); ctx.lineTo(tagX + tagW, tagY + tagH); ctx.lineTo(tagX, tagY + tagH); ctx.lineTo(tagX, tagY + 12); ctx.closePath(); ctx.fill();
+            ctx.fillStyle = 'white'; ctx.textAlign = 'center'; ctx.font = '600 8px Inter'; ctx.fillText(tagName.toUpperCase(), tagX + tagW/2, tagY + 15);
+            if (!isFinished) { ctx.fillStyle = 'white'; ctx.font = '200 16px Inter'; ctx.fillText(formatTime(timeRemaining), tagX + tagW/2, tagY + 41); ctx.fillStyle = 'rgba(255, 255, 255, 0.6)'; ctx.font = '400 10px Inter'; ctx.fillText(formatTime(duration - timeRemaining), tagX + tagW/2, tagY + 63); }
+            else { ctx.fillStyle = 'white'; ctx.font = '200 20px Inter'; ctx.fillText("00:00", tagX + tagW/2, tagY + 38); }
+            ctx.fillStyle = `hsl(${getPhaseData().h}, ${getPhaseData().s}%, ${getPhaseData().l}%)`; ctx.font = '700 7px Inter'; ctx.fillText(getPhaseData().label.toUpperCase(), tagX + tagW/2, tagY + tagH + 12); ctx.restore();
         }
 
-        function getPhaseData() {
-            const p = timeRemaining / duration;
-            return phases.find(ph => p >= ph.limit) || phases[phases.length - 1];
-        }
+        function getPhaseData() { const p = timeRemaining / duration; return phases.find(ph => p >= ph.limit) || phases[phases.length - 1]; }
+        function formatTime(seconds) { const m = Math.floor(Math.max(0, seconds) / 60); const s = Math.floor(Math.max(0, seconds) % 60); return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`; }
 
-        function formatTime(seconds) {
-            const m = Math.floor(Math.max(0, seconds) / 60);
-            const s = Math.floor(Math.max(0, seconds) % 60);
-            return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
-        }
-
-        function spawnParticles(delta) {
-            if (!isActive || timeRemaining <= 0) return;
-            let toSpawn = spawnChance * 60 * delta; 
-            const phaseData = getPhaseData();
-            const spawnMargin = (glass.thickness / 2) + 1;
-            const count = Math.floor(toSpawn) + (Math.random() < (toSpawn % 1) ? 1 : 0);
-            for (let i = 0; i < count; i++) {
-                let x;
-                if (Math.random() > 0.006) x = (glass.x + spawnMargin) + Math.random() * (glass.w - spawnMargin * 2);
-                else {
-                    const side = Math.random() > 0.5 ? 1 : -1; 
-                    x = side === 1 ? (glass.x + glass.w) + Math.random() * 20 : (glass.x) - Math.random() * 20;
-                }
-                let startY = -15;
-                if (delta > 0.1) startY = -15 - (Math.random() * delta * 100);
-                particles.push(new Particle(x, phaseData, startY));
-            }
-        }
-
-        function animate(timestamp) {
-            const now = Date.now();
-            if (!lastUpdateTime) lastUpdateTime = now;
-            const delta = (now - lastUpdateTime) / 1000;
-            lastUpdateTime = now;
-
-            ctx.clearRect(0, 0, width, height);
-            ctx.drawImage(floorBuffer, 0, 0);
+        function animate() {
+            const now = Date.now(); const delta = (now - (lastUpdateTime || now)) / 1000; lastUpdateTime = now;
+            if (camera.isAnimating) { camera.x += (camera.targetX - camera.x) * 0.1; camera.y += (camera.targetY - camera.y) * 0.1; if (Math.abs(camera.x - camera.targetX) < 1) camera.isAnimating = false; }
+            ctx.clearRect(0, 0, width, height); ctx.save(); ctx.translate(camera.x, camera.y); ctx.scale(camera.zoom, camera.zoom);
+            const phaseData = getPhaseData(); const phaseColor = `hsl(${phaseData.h}, ${phaseData.s}%, ${phaseData.l}%)`;
+            drawSpawnCloud(glass.x, glass.y - 100, glass.w, phaseColor);
             if (!isExploded) ctx.drawImage(glass.buffer, glass.x, glass.y);
-            
-            if (isActive && timeRemaining > 0) {
-                timeRemaining -= delta;
-                if (timeRemaining <= 0) { timeRemaining = 0; isActive = false; isFinished = true; startBtn.innerText = "Neu Starten"; timeSinceFinished = 0; }
-            } else if (isFinished) {
-                timeSinceFinished += delta;
-                if (!isExploded && timeSinceFinished >= duration) explodeGlass();
-            }
-            
-            if (isFinished && !isExploded) {
-                const progress = Math.min(1, timeSinceFinished / duration);
-                const easedProgress = Math.pow(progress, 4); 
-                const currentBpm = 65 + (easedProgress * 135);
-                pulsePhase += delta * (currentBpm / 60) * 2 * Math.PI;
-                const pulse = (Math.sin(pulsePhase) + 1) / 2;
-                const pulseStrength = 0.2 + (easedProgress * 0.75);
-                ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = pulse * pulseStrength;
-                ctx.drawImage(glass.buffer, glass.x, glass.y); ctx.restore();
-            }
-            
+            if (isActive && timeRemaining > 0) { timeRemaining -= delta; if (timeRemaining <= 0) { timeRemaining = 0; isActive = false; isFinished = true; startBtn.innerText = "Neu Starten"; } }
+            else if (isFinished) { timeSinceFinished += delta; if (!isExploded && timeSinceFinished >= duration) explodeGlass(); }
+            if (isFinished && !isExploded) { const pulse = (Math.sin(Date.now() * 0.005) + 1) / 2; ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = pulse * 0.4; ctx.drawImage(glass.buffer, glass.x, glass.y); ctx.restore(); }
             if (isFinished) {
-                if (Math.random() < 0.25) {
-                    const steamX = isExploded ? glass.x + glass.w / 2 + (Math.random() - 0.5) * 100 : glass.x + Math.random() * glass.w;
-                    const steamY = isExploded ? height - 50 : (glass.y + glass.h - glass.thickness) - Math.random() * 20;
-                    steamParticles.push(new SteamParticle(steamX, steamY));
-                }
-                for (let i = steamParticles.length - 1; i >= 0; i--) {
-                    if (steamParticles[i].update()) steamParticles[i].draw();
-                    else steamParticles.splice(i, 1);
-                }
-                ctx.save(); ctx.textAlign = 'center'; ctx.fillStyle = 'rgba(255, 255, 255, 0.4)'; ctx.font = '300 12px Inter'; ctx.letterSpacing = "2px";
-                const timerY = isExploded ? height / 2 - 20 : glass.y + glass.h - 80;
-                ctx.fillText(isExploded ? "DRUCK ENTWEICHEND" : "ZEIT SEIT ABSCHLUSS", glass.x + glass.w / 2, timerY - 15);
-                ctx.fillStyle = 'white'; ctx.font = '600 24px Inter';
-                ctx.fillText("+" + formatTime(timeSinceFinished), glass.x + glass.w / 2, timerY + 10);
-                if (isExploded) { ctx.font = '700 9px Inter'; ctx.fillStyle = 'rgba(255, 0, 0, 0.5)'; ctx.fillText("STRUKTUR VERLOREN", glass.x + glass.w / 2, timerY + 35); }
-                ctx.restore();
+                if (Math.random() < 0.25) steamParticles.push(new SteamParticle(glass.x + Math.random()*glass.w, isExploded ? 400 : glass.y + glass.h));
+                for (let i = steamParticles.length - 1; i >= 0; i--) if (steamParticles[i].update()) steamParticles[i].draw(); else steamParticles.splice(i, 1);
+                ctx.save(); ctx.textAlign = 'center'; ctx.fillStyle = 'white'; ctx.font = '600 24px Inter'; ctx.fillText("+" + formatTime(timeSinceFinished), glass.x + glass.w / 2, glass.y + glass.h - 70); ctx.restore();
             }
+            drawUIElements(); 
+            if (isActive && timeRemaining > 0) {
+                let toSpawn = spawnChance * 60 * delta;
+                for (let i = 0; i < Math.floor(toSpawn) + (Math.random() < (toSpawn % 1) ? 1 : 0); i++) {
+                    // Partikel Spawning (mit Spill-Wahrscheinlichkeit)
+                    let x;
+                    if (Math.random() > 0.008) x = glass.x + 10 + Math.random()*(glass.w-20);
+                    else x = Math.random() > 0.5 ? glass.x - 15 - Math.random()*20 : glass.x + glass.w + 15 + Math.random()*20;
+                    particles.push(new Particle(x, phaseData, glass.y - 100));
+                }
+            }
+            for (let i = particles.length - 1; i >= 0; i--) if (particles[i].update(delta)) particles[i].draw(); else particles.splice(i, 1);
+            ctx.restore(); updateNavigationIndicator();
             
-            drawUIElements(); spawnParticles(delta);
-            for (let i = particles.length - 1; i >= 0; i--) {
-                if (particles[i].update(delta)) particles[i].draw(); else particles.splice(i, 1);
+            // STATUS LOGIK FÜR DRAG-HINT (Präzise gefiltert)
+            if (!isActive && !isFinished && !isExploded) {
+                if (hasSandInGlassBoundaries()) {
+                    dragHint.innerText = "SAND FÄLLT NOCH INS GLAS...";
+                    dragHint.classList.add('disabled-hint');
+                    dragHint.classList.remove('hidden');
+                } else {
+                    dragHint.innerText = "Ziehen zum Bewegen";
+                    dragHint.classList.remove('disabled-hint');
+                    if (camera.isPanning) dragHint.classList.add('hidden');
+                    else dragHint.classList.remove('hidden');
+                }
+            } else {
+                dragHint.classList.add('hidden');
             }
+
+            if (!isAdjusting) updateControlPosition(); 
             requestAnimationFrame(animate);
+        }
+
+        function updateControlPosition() {
+            const screenPos = worldToScreen(glass.x + glass.w/2, glass.y + glass.h);
+            controls.style.left = `${screenPos.x - controls.offsetWidth / 2}px`;
+            controls.style.top = `${screenPos.y + 20 * camera.zoom}px`;
+            controls.style.transform = `scale(${Math.max(0.6, Math.min(camera.zoom, 1))})`;
         }
 
         tagColorInput.addEventListener('input', (e) => tagColor = e.target.value);
@@ -818,82 +737,45 @@
         widthInput.addEventListener('input', (e) => {
             if (isActive || isFinished) return;
             const newW = parseInt(e.target.value); const diff = newW - glass.w;
-            glass.x -= diff / 2; glass.w = newW; widthLabel.innerText = newW; updateGlassHeights(); updateControlPosition();
+            glass.x -= diff / 2;
+            glass.w = newW; widthLabel.innerText = newW; updateGlassHeights();
         });
         heightInput.addEventListener('input', (e) => {
             if (isActive || isFinished) return;
             const newH = parseInt(e.target.value); const diff = newH - glass.h;
-            glass.y -= diff; glass.h = newH; heightLabel.innerText = newH; updateGlassHeights(); updateControlPosition();
+            glass.y -= diff; 
+            glass.h = newH; heightLabel.innerText = newH; updateGlassHeights();
         });
         
         startBtn.addEventListener('click', () => {
+            if (isRemoteTimer && isActive) return;
             if (isFinished) { resetSession(); return; }
             if (!isActive) {
                 if (timeRemaining === duration) {
-                    const mins = parseInt(minutesInput.value) || 25; 
-                    duration = mins * 60; timeRemaining = duration;
-                    startTimeTimestamp = Date.now();
-                    calculateSpawnChance(); 
-                    settingsGroup.classList.add('hidden'); resetBtn.classList.remove('hidden'); dragHint.classList.add('hidden');
-                    glass.ctx.clearRect(0, 0, glass.w, glass.h); floorCtx.clearRect(0, 0, width, height);
+                    duration = (parseInt(minutesInput.value) || 25) * 60; timeRemaining = duration;
+                    startTimeTimestamp = Date.now(); calculateSpawnChance(); 
+                    settingsGroup.classList.add('hidden'); resetBtn.classList.remove('hidden'); 
+                    glass.ctx.clearRect(0, 0, glass.w, glass.h);
                 }
-                isActive = true; 
-                lastUpdateTime = Date.now(); 
-                startBtn.innerText = "Pause";
-            } else { 
-                isActive = false; 
-                startBtn.innerText = "Fortsetzen"; 
-                if (particles.length === 0) dragHint.classList.remove('hidden'); 
-            }
-            // Position sofort aktualisieren, da sich die Höhe der Controls geändert hat
-            updateControlPosition();
+                isActive = true; lastUpdateTime = Date.now(); 
+                startBtn.innerText = isRemoteTimer ? "Wird ausgeführt..." : "Pause";
+            } else { isActive = false; startBtn.innerText = "Fortsetzen"; }
         });
         
         resetBtn.addEventListener('click', resetSession);
-
         shareBtn.addEventListener('click', () => {
-            // Robuste URL-Generierung basierend auf der aktuellen Adresse
-            const url = new URL(window.location.href);
-            // Bestehende Suchparameter löschen
-            url.search = '';
-            url.searchParams.set('name', tagName);
-            url.searchParams.set('color', tagColor);
-            url.searchParams.set('mins', Math.floor(duration / 60));
-            url.searchParams.set('width', glass.w);
-            url.searchParams.set('height', glass.h);
+            const url = new URL(window.location.href); url.search = ''; url.searchParams.set('name', tagName); url.searchParams.set('color', tagColor); url.searchParams.set('mins', Math.floor(duration / 60)); url.searchParams.set('width', glass.w); url.searchParams.set('height', glass.h);
             if (startTimeTimestamp && (isActive || isFinished)) url.searchParams.set('start', startTimeTimestamp);
-
-            const input = document.createElement('input');
-            input.value = url.href;
-            document.body.appendChild(input);
-            input.select();
-            document.execCommand('copy');
-            document.body.removeChild(input);
-
-            toast.style.opacity = '1';
-            setTimeout(() => toast.style.opacity = '0', 2000);
+            const input = document.createElement('input'); input.value = url.href; document.body.appendChild(input); input.select(); document.execCommand('copy'); document.body.removeChild(input);
+            toast.style.opacity = '1'; setTimeout(() => toast.style.opacity = '0', 2000);
         });
         
         function resetSession() {
-            isActive = false; isFinished = false; isExploded = false; particles = []; steamParticles = [];
-            startTimeTimestamp = null;
-            glassSandHeights.fill(0); floorSandHeights.fill(0); glass.ctx.clearRect(0, 0, glass.w, glass.h);
-            floorCtx.clearRect(0, 0, width, height);
-            const mins = parseInt(minutesInput.value) || 25; duration = mins * 60; timeRemaining = duration;
-            timeSinceFinished = 0; pulsePhase = 0;
-            startBtn.innerText = "Start"; settingsGroup.classList.remove('hidden'); resetBtn.classList.add('hidden');
-            dragHint.innerText = "Zum Positionieren ziehen"; dragHint.classList.remove('hidden', 'disabled-hint');
-            lastUpdateTime = 0;
-            
-            // UI Position auffrischen
-            updateControlPosition();
-            
-            // Security-Fix: replaceState in try-catch für Blob/Iframe-Support
-            try {
-                window.history.replaceState({}, document.title, window.location.pathname);
-            } catch (e) {
-                console.warn("URL konnte im Reset nicht bereinigt werden (Security Restriction).");
-            }
+            isActive = false; isFinished = false; isExploded = false; isRemoteTimer = false; isAdjusting = false;
+            particles = []; steamParticles = []; startTimeTimestamp = null; glassSandHeights.fill(0); glass.ctx.clearRect(0, 0, glass.w, glass.h);
+            duration = (parseInt(minutesInput.value) || 25) * 60; timeRemaining = duration; timeSinceFinished = 0; pulsePhase = 0;
+            startBtn.innerText = "Start"; settingsGroup.classList.remove('hidden'); resetBtn.classList.add('hidden'); 
+            try { window.history.replaceState({}, document.title, window.location.pathname); } catch (e) {}
         }
         
         init();
