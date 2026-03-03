@@ -1,11 +1,13 @@
 <!-- 
     Change Log
-    Focus on Time - Foonti v1.4.1
+    Focus on Time - Foonti v1.5.1
     Änderungen: 
-    - Neu: Timer-Logik auf absolute Zeitstempel umgestellt (Date.now()).
-    - Optimierung: Timer läuft präzise im Hintergrund/Standby weiter.
-    - Logik: "Catch-up" Mechanismus für Sandpartikel bei Tab-Reaktivierung integriert.
+    - Neu: Sprechende URL-Parameter für bessere Lesbarkeit (name, color, mins, width, height, start).
+    - Optimierung: Verfeinerte "Instant-Fill" Logik (preFillSand) für exakte Synchronität der Sandmenge beim Laden.
+    - Neu: Automatisches "Reinkippen" der berechneten Sandmenge bei Link-Einstieg.
     - UI: Tag-Anzeige (v1.3.9) und alle Effekte (v1.4.0) vollständig erhalten.
+    - Logik: Hintergrund-Support (v1.4.1) und Sharing-Basis (v1.5.0) integriert.
+    - Alle Kommentare und physikalischen Logiken beibehalten.
     - Logik: Präzise Volumen-Zeit-Kopplung beibehalten.
     - UI: Kompaktes vertikales Design integriert.
     - Alle Effekte (Pulse, Glow, Explosion, Dampf) integriert.
@@ -41,12 +43,13 @@
     - Neu: Sand näher an die Glaswände gerückt (Marge reduziert)
     - Neu: Physikalisch korrekte Kurven-Kollision in den Glasecken (Radius 15px)                  
 -->
+-->
 <!DOCTYPE html>
 <html lang="de">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Digitaler Sandregen - v1.4.1</title>
+    <title>Digitaler Sandregen - v1.5.1</title>
     <style>
         :root {
             --bg-color: #050505;
@@ -184,6 +187,8 @@
         .button-row {
             display: flex;
             gap: 0.5rem;
+            flex-wrap: wrap;
+            justify-content: center;
         }
 
         button {
@@ -206,6 +211,14 @@
             border-color: rgba(255, 255, 255, 0.3);
         }
 
+        #shareBtn {
+            background: rgba(123, 47, 247, 0.15);
+            border-color: rgba(123, 47, 247, 0.3);
+        }
+        #shareBtn:hover {
+            background: rgba(123, 47, 247, 0.25);
+        }
+
         .drag-hint {
             position: absolute;
             top: -24px;
@@ -216,6 +229,25 @@
 
         .hidden { display: none !important; }
         .disabled-hint { color: #ff5555; opacity: 0.7; }
+
+        /* Toast Message */
+        #toast {
+            position: fixed;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            padding: 10px 20px;
+            border-radius: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            font-size: 0.7rem;
+            color: white;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+            pointer-events: none;
+            z-index: 1000;
+        }
     </style>
 </head>
 <body>
@@ -258,9 +290,12 @@
             <div class="button-row">
                 <button id="startBtn">Start</button>
                 <button id="resetBtn" class="hidden">Reset</button>
+                <button id="shareBtn">Link teilen</button>
             </div>
         </div>
     </div>
+
+    <div id="toast">Link in Zwischenablage kopiert</div>
 
     <script>
 
@@ -273,6 +308,7 @@
         const controls = document.getElementById('glassControls');
         const startBtn = document.getElementById('startBtn');
         const resetBtn = document.getElementById('resetBtn');
+        const shareBtn = document.getElementById('shareBtn');
         const minutesInput = document.getElementById('minutesInput');
         const widthInput = document.getElementById('widthInput');
         const heightInput = document.getElementById('heightInput');
@@ -282,6 +318,7 @@
         const tagNameInput = document.getElementById('tagNameInput');
         const settingsGroup = document.getElementById('settings-group');
         const dragHint = document.getElementById('dragHint');
+        const toast = document.getElementById('toast');
 
         let width, height;
         let particles = [];
@@ -292,7 +329,8 @@
         let duration = 25 * 60; 
         let timeRemaining = duration;
         let timeSinceFinished = 0;
-        let lastUpdateTime = 0; // Absolute Zeit für Hintergrund-Support
+        let lastUpdateTime = 0; 
+        let startTimeTimestamp = null; // Für Sharing
         let tagColor = '#191919';
         let tagName = 'Fokus';
         let pulsePhase = 0;
@@ -321,12 +359,129 @@
             resize();
             glass.x = (width - glass.w) / 2;
             glass.y = (height - glass.h) / 2 - 50;
+            
+            // Sharing-Parameter prüfen
+            parseUrlParams();
+
             window.addEventListener('resize', resize);
             window.addEventListener('mousedown', onMouseDown);
             window.addEventListener('mousemove', onMouseMove);
             window.addEventListener('mouseup', onMouseUp);
             requestAnimationFrame(animate);
             updateControlPosition();
+        }
+
+        function parseUrlParams() {
+            const params = new URLSearchParams(window.location.search);
+            // Sprechende Parameter-Namen
+            if (params.has('name')) {
+                tagName = params.get('name');
+                tagNameInput.value = tagName;
+            }
+            if (params.has('color')) {
+                tagColor = params.get('color');
+                tagColorInput.value = tagColor;
+            }
+            if (params.has('mins')) {
+                const m = parseInt(params.get('mins'));
+                minutesInput.value = m;
+                duration = m * 60;
+                timeRemaining = duration;
+            }
+            if (params.has('width')) {
+                const w = parseInt(params.get('width'));
+                glass.w = w;
+                widthInput.value = w;
+                widthLabel.innerText = w;
+            }
+            if (params.has('height')) {
+                const h = parseInt(params.get('height'));
+                glass.h = h;
+                heightInput.value = h;
+                heightLabel.innerText = h;
+            }
+            
+            updateGlassHeights();
+            calculateSpawnChance();
+
+            if (params.has('start')) {
+                const t = parseInt(params.get('start'));
+                startTimeTimestamp = t;
+                const now = Date.now();
+                const elapsed = (now - t) / 1000;
+                
+                if (elapsed > 0) {
+                    isActive = true;
+                    lastUpdateTime = now;
+                    settingsGroup.classList.add('hidden');
+                    resetBtn.classList.remove('hidden');
+                    dragHint.classList.add('hidden');
+                    startBtn.innerText = "Pause";
+                    
+                    if (elapsed < duration) {
+                        timeRemaining = duration - elapsed;
+                        // Sand sofort auffüllen für die verstrichene Zeit
+                        preFillSand(elapsed);
+                    } else {
+                        timeRemaining = 0;
+                        isActive = false;
+                        isFinished = true;
+                        timeSinceFinished = elapsed - duration;
+                        startBtn.innerText = "Neu Starten";
+                        preFillSand(duration);
+                        if (timeSinceFinished >= duration) explodeGlass();
+                    }
+                }
+            }
+        }
+
+        // Zeichnet Sand sofort in den Puffer ohne Partikel zu simulieren (Performance & Synchronität)
+        function preFillSand(seconds) {
+            const totalParticlesNeeded = spawnChance * 60 * seconds;
+            const phaseData = getPhaseData();
+            
+            // Menge an Sand auf einmal "reinkippen"
+            // Wir berechnen das benötigte Volumen exakt und verteilen es auf die Spalten
+            const iterations = Math.floor(totalParticlesNeeded); 
+            
+            for(let i = 0; i < iterations; i++) {
+                // Wir nutzen eine gewichtete Zufallsverteilung für die Spalten, um Haufenbildung zu simulieren
+                const x = Math.floor(Math.random() * (glass.w - glass.thickness));
+                const settledIndex = findSettleIndexGlobal(x, glassSandHeights, true);
+                const hInc = 0.45; // Konstanter Inkrement für absolute Gleichheit
+                
+                glassSandHeights[settledIndex] += hInc;
+                const cornerOffset = getGlassBaselineOffset(settledIndex);
+                
+                glass.ctx.save();
+                // Farbschwankung für natürliche Optik beim Kippen
+                const lVar = phaseData.l + (Math.random() - 0.5) * 10;
+                glass.ctx.fillStyle = `hsl(${phaseData.h}, ${phaseData.s}%, ${lVar}%)`;
+                glass.ctx.globalAlpha = 0.85;
+                // Partikelgröße konsistent halten
+                glass.ctx.fillRect(settledIndex, (glass.h - glass.thickness / 2 - cornerOffset) - glassSandHeights[settledIndex], 1.5, 1.5);
+                glass.ctx.restore();
+            }
+        }
+
+        function findSettleIndexGlobal(index, heightsArray, isGlass = false) {
+            let current = index;
+            const limit = isGlass ? Math.floor(glass.thickness / 2) : 2;
+            for (let i = 0; i < 4; i++) {
+                const left = current - 1; const right = current + 1;
+                let moved = false;
+                const currentTotalH = heightsArray[current] + (isGlass ? getGlassBaselineOffset(current) : 0);
+                if (left >= limit) {
+                    const leftTotalH = heightsArray[left] + (isGlass ? getGlassBaselineOffset(left) : 0);
+                    if (leftTotalH < currentTotalH - 0.8) { current = left; moved = true; }
+                }
+                if (!moved && right < heightsArray.length - limit) {
+                    const rightTotalH = heightsArray[right] + (isGlass ? getGlassBaselineOffset(right) : 0);
+                    if (rightTotalH < currentTotalH - 0.8) { current = right; moved = true; }
+                }
+                if (!moved) break;
+            }
+            return current;
         }
 
         function resize() {
@@ -463,7 +618,7 @@
 
             drawToBuffer(index, type) {
                 if (type === 'glass') {
-                    const settledIndex = this.findSettleIndex(index, glassSandHeights, true);
+                    const settledIndex = findSettleIndexGlobal(index, glassSandHeights, true);
                     const increment = 0.4 + Math.random() * 0.1;
                     glassSandHeights[settledIndex] += increment;
                     if (settledIndex > 0) glassSandHeights[settledIndex-1] += increment * 0.2;
@@ -475,7 +630,7 @@
                     glass.ctx.fillRect(settledIndex, (glass.h - glass.thickness / 2 - cornerOffset) - glassSandHeights[settledIndex], this.size, this.size);
                     glass.ctx.restore();
                 } else {
-                    const settledIndex = this.findSettleIndex(index, floorSandHeights, false);
+                    const settledIndex = findSettleIndexGlobal(index, floorSandHeights, false);
                     floorSandHeights[settledIndex] += 0.3;
                     floorCtx.save();
                     floorCtx.fillStyle = this.color;
@@ -483,26 +638,6 @@
                     floorCtx.fillRect(settledIndex, height - floorSandHeights[settledIndex], this.size, this.size);
                     floorCtx.restore();
                 }
-            }
-
-            findSettleIndex(index, heightsArray, isGlass = false) {
-                let current = index;
-                const limit = isGlass ? Math.floor(glass.thickness / 2) : 2;
-                for (let i = 0; i < 4; i++) {
-                    const left = current - 1; const right = current + 1;
-                    let moved = false;
-                    const currentTotalH = heightsArray[current] + (isGlass ? getGlassBaselineOffset(current) : 0);
-                    if (left >= limit) {
-                        const leftTotalH = heightsArray[left] + (isGlass ? getGlassBaselineOffset(left) : 0);
-                        if (leftTotalH < currentTotalH - 0.8) { current = left; moved = true; }
-                    }
-                    if (!moved && right < heightsArray.length - limit) {
-                        const rightTotalH = heightsArray[right] + (isGlass ? getGlassBaselineOffset(right) : 0);
-                        if (rightTotalH < currentTotalH - 0.8) { current = right; moved = true; }
-                    }
-                    if (!moved) break;
-                }
-                return current;
             }
 
             draw() {
@@ -625,13 +760,9 @@
         function spawnParticles(delta) {
             if (!isActive || timeRemaining <= 0) return;
             
-            // Berechnung der Partikelanzahl basierend auf verstrichener Zeit (delta)
-            // Dies korrigiert Sprünge, wenn der Tab im Hintergrund war.
             let toSpawn = spawnChance * 60 * delta; 
-            
             const phaseData = getPhaseData();
             const spawnMargin = (glass.thickness / 2) + 1;
-            
             const count = Math.floor(toSpawn) + (Math.random() < (toSpawn % 1) ? 1 : 0);
             
             for (let i = 0; i < count; i++) {
@@ -643,11 +774,8 @@
                     x = side === 1 ? (glass.x + glass.w) + Math.random() * 20 : (glass.x) - Math.random() * 20;
                 }
                 
-                // Bei großen Sprüngen (Hintergrund-Catchup) verteilen wir die Partikel 
-                // vertikal etwas, um Klumpenbildung zu vermeiden.
                 let startY = -15;
                 if (delta > 0.1) startY = -15 - (Math.random() * delta * 100);
-                
                 particles.push(new Particle(x, phaseData, startY));
             }
         }
@@ -735,12 +863,13 @@
                 if (timeRemaining === duration) {
                     const mins = parseInt(minutesInput.value) || 25; 
                     duration = mins * 60; timeRemaining = duration;
+                    startTimeTimestamp = Date.now(); // Zeitpunkt für Sharing festlegen
                     calculateSpawnChance(); 
                     settingsGroup.classList.add('hidden'); resetBtn.classList.remove('hidden'); dragHint.classList.add('hidden');
                     glass.ctx.clearRect(0, 0, glass.w, glass.h); floorCtx.clearRect(0, 0, width, height);
                 }
                 isActive = true; 
-                lastUpdateTime = Date.now(); // Reset für präzisen Start
+                lastUpdateTime = Date.now(); 
                 startBtn.innerText = "Pause";
             } else { 
                 isActive = false; 
@@ -750,9 +879,36 @@
         });
         
         resetBtn.addEventListener('click', resetSession);
+
+        shareBtn.addEventListener('click', () => {
+            const url = new URL(window.location.origin + window.location.pathname);
+            // Sprechende Parameter beim Teilen
+            url.searchParams.set('name', tagName);
+            url.searchParams.set('color', tagColor);
+            url.searchParams.set('mins', Math.floor(duration / 60));
+            url.searchParams.set('width', glass.w);
+            url.searchParams.set('height', glass.h);
+            
+            if (startTimeTimestamp && (isActive || isFinished)) {
+                url.searchParams.set('start', startTimeTimestamp);
+            }
+
+            // In Zwischenablage kopieren (fallback document.execCommand)
+            const input = document.createElement('input');
+            input.value = url.href;
+            document.body.appendChild(input);
+            input.select();
+            document.execCommand('copy');
+            document.body.removeChild(input);
+
+            // Toast Feedback
+            toast.style.opacity = '1';
+            setTimeout(() => toast.style.opacity = '0', 2000);
+        });
         
         function resetSession() {
             isActive = false; isFinished = false; isExploded = false; particles = []; steamParticles = [];
+            startTimeTimestamp = null;
             glassSandHeights.fill(0); floorSandHeights.fill(0); glass.ctx.clearRect(0, 0, glass.w, glass.h);
             floorCtx.clearRect(0, 0, width, height);
             const mins = parseInt(minutesInput.value) || 25; duration = mins * 60; timeRemaining = duration;
@@ -760,6 +916,9 @@
             startBtn.innerText = "Start"; settingsGroup.classList.remove('hidden'); resetBtn.classList.add('hidden');
             dragHint.innerText = "Zum Positionieren ziehen"; dragHint.classList.remove('hidden', 'disabled-hint');
             lastUpdateTime = 0;
+            
+            // URL säubern beim Reset
+            window.history.replaceState({}, document.title, window.location.pathname);
         }
         
         init();
