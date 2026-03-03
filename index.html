@@ -1,11 +1,11 @@
 <!-- 
     Change Log
-    Focus on Time - Foonti v1.5.4
+    Focus on Time - Foonti v1.5.5
     Änderungen: 
-    - Fehlerbehebung: Überlagerung der Buttons auf dem Glas bei Mobilgeräten behoben.
-    - Optimierung: updateControlPosition erzwingt nun einen Mindestabstand zum Glasboden.
-    - Logik: UI-Position wird nun bei Start/Pause/Reset sofort aktualisiert (Layout-Refresh).
-    - UI: .glass-controls CSS für präzisere JS-Positionierung angepasst.
+    - Optimierung: Bedienelemente werden nun aktiv im sichtbaren Bereich gehalten (Viewport-Check).
+    - Logik: Das Glas verschiebt sich automatisch nach oben, wenn die Steuerung unten aus dem Bild ragen würde.
+    - UI: Initiale Positionierung (init/resize) für kleine Bildschirme verbessert.
+    - Fehlerbehebung: Überlagerung der Buttons auf dem Glas bei Mobilgeräten (v1.5.4) weiter verfeinert.
     - Fehlerbehebung: SecurityError bei history.replaceState (v1.5.3) weiterhin abgesichert.
     - Logik: Sprechende URL-Parameter und "Instant-Fill" erhalten.
     - UI: Tag-Anzeige (v1.3.9) und alle Effekte (v1.4.0) vollständig erhalten.
@@ -16,7 +16,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Digitaler Sandregen - v1.5.4</title>
+    <title>Digitaler Sandregen - v1.5.5</title>
     <style>
         :root {
             --bg-color: #050505;
@@ -334,7 +334,8 @@
             
             // Standard-Positionierung zentriert
             glass.x = (width - glass.w) / 2;
-            glass.y = Math.max(20, (height - glass.h) / 2 - 80);
+            // Etwas höher anfangen, um Platz für die Controls zu lassen
+            glass.y = Math.max(20, (height - glass.h) / 2 - 120);
             
             parseUrlParams();
 
@@ -481,8 +482,17 @@
             controls.style.left = `${Math.max(10, Math.min(width - controls.offsetWidth - 10, centerX - controlsHalfWidth))}px`;
             
             // Vertikale Positionierung: Mindestens 20px unter dem Glasboden
-            // Wir ignorieren hier bewusst den unteren Screen-Rand, um Überlappung zu vermeiden
-            const idealTop = glass.y + glass.h + 20;
+            let idealTop = glass.y + glass.h + 20;
+
+            // Viewport-Check: Wenn die Controls unten aus dem Bild ragen würden
+            const controlHeight = controls.offsetHeight;
+            if (idealTop + controlHeight > height - 15) {
+                // Das Glas muss nach oben geschoben werden, um Platz zu machen
+                const overlap = (idealTop + controlHeight) - (height - 15);
+                glass.y = Math.max(10, glass.y - overlap);
+                idealTop = glass.y + glass.h + 20;
+            }
+
             controls.style.top = `${idealTop}px`;
         }
 
