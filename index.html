@@ -1,7 +1,13 @@
+
 <!-- 
     Change Log
-    Focus on Time - Foonti v1.6.5
+    Focus on Time - Foonti v1.6.6
     Änderungen: 
+    - Neu: Pinch-to-Zoom für Smartphones integriert (Zwei-Finger-Geste zum Zoomen).
+    - Neu: "Sand-Burst" beim Laden von geteilten Links. Partikel fallen nun in einem großen Schwall von oben herab.
+    - Korrektur: Partikel im Burst erhalten die historisch korrekten Farben der jeweiligen Zeitphasen.
+    - Optimierung: Touch-Events für flüssigeres Panning und Zooming auf mobilen Geräten überarbeitet.
+    - Erhalt: Alle bisherigen Features (Endless Paper, Nav-Pfeile, Fokus-Wolke, stabile Slider).    
     - Logik: Die Drag-Sperre prüft nun nur noch Partikel, die sich innerhalb der Breite des Glases befinden.
     - Optimierung: Sand, der neben das Glas fällt, blockiert das Verschieben nicht mehr.
     - UI: Der "SAND FÄLLT NOCH..."-Hinweis erscheint nur bei Partikeln im Zielbereich des Glases.
@@ -47,7 +53,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Foonti v1.6.5 - Präzise Drag-Sperre</title>
+    <title>Foonti v1.6.6 - Mobile Zoom & Burst</title>
     <style>
         :root {
             --bg-color: #050505;
@@ -375,6 +381,9 @@
         let tagName = 'Fokus';
         let pulsePhase = 0;
 
+        // Multi-Touch Zoom State
+        let initialPinchDistance = null;
+
         let camera = {
             x: 0, y: 0, zoom: 1,
             targetX: 0, targetY: 0,
@@ -413,11 +422,11 @@
 
             window.addEventListener('resize', resize);
             window.addEventListener('mousedown', onPointerDown);
-            window.addEventListener('touchstart', (e) => onPointerDown(e.touches[0]), { passive: false });
+            window.addEventListener('touchstart', onTouchStart, { passive: false });
+            
             window.addEventListener('mousemove', onPointerMove);
-            window.addEventListener('touchmove', (e) => {
-                if (camera.isPanning || glass.isDragging) { onPointerMove(e.touches[0]); e.preventDefault(); }
-            }, { passive: false });
+            window.addEventListener('touchmove', onTouchMove, { passive: false });
+            
             window.addEventListener('mouseup', onPointerUp);
             window.addEventListener('touchend', onPointerUp);
             window.addEventListener('wheel', onWheel, { passive: false });
@@ -460,8 +469,16 @@
                     isActive = true; lastUpdateTime = now;
                     settingsGroup.classList.add('hidden'); resetBtn.classList.remove('hidden'); dragHint.classList.add('hidden');
                     startBtn.innerText = "Wird ausgeführt...";
-                    if (elapsed < duration) { timeRemaining = duration - elapsed; preFillSand(elapsed); }
-                    else { timeRemaining = 0; isActive = false; isFinished = true; timeSinceFinished = elapsed - duration; startBtn.innerText = "Neu Starten"; preFillSand(duration); if (timeSinceFinished >= duration) explodeGlass(); }
+                    
+                    if (elapsed < duration) { 
+                        timeRemaining = duration - elapsed; 
+                        spawnBurst(elapsed); // Neu: Schwall statt Pre-Fill
+                    } else { 
+                        timeRemaining = 0; isActive = false; isFinished = true; timeSinceFinished = elapsed - duration; 
+                        startBtn.innerText = "Neu Starten"; 
+                        spawnBurst(duration); // Neu: Schwall bei Beendigung
+                        if (timeSinceFinished >= duration) explodeGlass(); 
+                    }
                 }
             }
         }
@@ -469,27 +486,73 @@
         function screenToWorld(sx, sy) { return { x: (sx - camera.x) / camera.zoom, y: (sy - camera.y) / camera.zoom }; }
         function worldToScreen(wx, wy) { return { x: wx * camera.zoom + camera.x, y: wy * camera.zoom + camera.y }; }
 
-        // Hilfsfunktion: Gibt true zurück, wenn mindestens ein Partikel horizontal im Glasbereich fällt
         function hasSandInGlassBoundaries() {
             const innerMargin = glass.thickness / 2;
             return particles.some(p => p.x >= glass.x + innerMargin && p.x <= glass.x + glass.w - innerMargin);
         }
 
+        // TOUCH HANDLING
+        function onTouchStart(e) {
+            if (e.touches.length === 2) {
+                const dist = Math.hypot(
+                    e.touches[0].pageX - e.touches[1].pageX,
+                    e.touches[0].pageY - e.touches[1].pageY
+                );
+                initialPinchDistance = dist;
+                camera.isPanning = false; // Panning pausieren bei Zoom
+                return;
+            }
+            onPointerDown(e.touches[0]);
+        }
+
+        function onTouchMove(e) {
+            if (e.touches.length === 2 && initialPinchDistance !== null) {
+                e.preventDefault();
+                const dist = Math.hypot(
+                    e.touches[0].pageX - e.touches[1].pageX,
+                    e.touches[0].pageY - e.touches[1].pageY
+                );
+                
+                // Zoom-Faktor berechnen
+                const factor = dist / initialPinchDistance;
+                const zoomSpeed = 0.3; // Sanftheit des mobilen Zooms
+                const targetZoom = camera.zoom * (1 + (factor - 1) * zoomSpeed);
+                
+                // Zoom am Mittelpunkt der Finger ausführen
+                const midX = (e.touches[0].pageX + e.touches[1].pageX) / 2;
+                const midY = (e.touches[0].pageY + e.touches[1].pageY) / 2;
+                
+                applyZoomAt(midX, midY, targetZoom);
+                initialPinchDistance = dist;
+                return;
+            }
+            
+            if (camera.isPanning || glass.isDragging) {
+                onPointerMove(e.touches[0]);
+                e.preventDefault();
+            }
+        }
+
+        function applyZoomAt(sx, sy, targetZoom) {
+            const mouseWorldBefore = screenToWorld(sx, sy);
+            camera.zoom = Math.max(0.1, Math.min(targetZoom, 5));
+            const mouseWorldAfter = screenToWorld(sx, sy);
+            camera.x += (mouseWorldAfter.x - mouseWorldBefore.x) * camera.zoom;
+            camera.y += (mouseWorldAfter.y - mouseWorldBefore.y) * camera.zoom;
+        }
+
         function onPointerDown(e) {
             if (e.target && e.target.closest('.glass-controls')) return;
             const wPos = screenToWorld(e.clientX, e.clientY);
-
             const isInGlass = wPos.x >= glass.x && wPos.x <= glass.x + glass.w && wPos.y >= glass.y && wPos.y <= glass.y + glass.h;
 
             if (!isActive && !isFinished && isInGlass) {
-                // NEU: Nur sperren, wenn Sand im Glasbereich fällt (nicht daneben)
                 if (hasSandInGlassBoundaries()) {
                     dragHint.innerText = "SAND FÄLLT NOCH INS GLAS...";
                     dragHint.classList.add('disabled-hint');
                     dragHint.classList.remove('hidden');
                     return; 
                 }
-                
                 glass.isDragging = true; 
                 glass.dragOffset.x = wPos.x - glass.x; 
                 glass.dragOffset.y = wPos.y - glass.y; 
@@ -511,17 +574,18 @@
             }
         }
 
-        function onPointerUp() { glass.isDragging = false; camera.isPanning = false; isAdjusting = false; }
+        function onPointerUp() { 
+            glass.isDragging = false; 
+            camera.isPanning = false; 
+            isAdjusting = false; 
+            initialPinchDistance = null;
+        }
 
         function onWheel(e) {
             if (e.target.closest('.glass-controls')) return;
             e.preventDefault();
             const factor = Math.pow(1.1, -e.deltaY / 100);
-            const mouseWorldBefore = screenToWorld(e.clientX, e.clientY);
-            camera.zoom = Math.max(0.1, Math.min(camera.zoom * factor, 5));
-            const mouseWorldAfter = screenToWorld(e.clientX, e.clientY);
-            camera.x += (mouseWorldAfter.x - mouseWorldBefore.x) * camera.zoom;
-            camera.y += (mouseWorldAfter.y - mouseWorldBefore.y) * camera.zoom;
+            applyZoomAt(e.clientX, e.clientY, camera.zoom * factor);
         }
 
         function jumpToGlass() {
@@ -543,18 +607,28 @@
             } else { navArrow.classList.add('hidden'); }
         }
 
-        function preFillSand(seconds) {
-            const totalParticlesNeeded = spawnChance * 60 * seconds;
-            const phaseData = getPhaseData();
-            for(let i = 0; i < Math.floor(totalParticlesNeeded); i++) {
-                const x = Math.floor(Math.random() * (glass.w - glass.thickness));
-                const settledIndex = findSettleIndexGlobal(x, glassSandHeights, true);
-                glassSandHeights[settledIndex] += 0.45;
-                const cornerOffset = getGlassBaselineOffset(settledIndex);
-                glass.ctx.save(); glass.ctx.fillStyle = `hsl(${phaseData.h}, ${phaseData.s}%, ${phaseData.l + (Math.random()-0.5)*10}%)`;
-                glass.ctx.globalAlpha = 0.85;
-                glass.ctx.fillRect(settledIndex, (glass.h - glass.thickness / 2 - cornerOffset) - glassSandHeights[settledIndex], 1.5, 1.5);
-                glass.ctx.restore();
+        // NEU: Schwall-Funktion statt statischem Pre-Fill
+        function spawnBurst(seconds) {
+            const totalParticlesNeeded = Math.floor(spawnChance * 60 * seconds);
+            const burstY = glass.y - 100;
+            const innerMargin = 10;
+            
+            // Um die richtigen Farben zu erhalten, loopen wir virtuell durch die Zeit
+            for(let i = 0; i < totalParticlesNeeded; i++) {
+                // Berechne, zu welcher "virtuellen Zeit" dieses Sandkorn gehört
+                const virtualElapsed = (i / (spawnChance * 60));
+                const virtualTimeRemaining = duration - virtualElapsed;
+                
+                // Farbe für diese spezifische Phase bestimmen
+                const p = virtualTimeRemaining / duration;
+                const phaseData = phases.find(ph => p >= ph.limit) || phases[phases.length - 1];
+                
+                let x = glass.x + innerMargin + Math.random() * (glass.w - innerMargin * 2);
+                const pObj = new Particle(x, phaseData, burstY - Math.random() * 200); // Über Wolkenhöhe für schöneren Fall
+                
+                // Erhöhte Fallgeschwindigkeit für den Burst-Effekt
+                pObj.speedY = 5 + Math.random() * 5; 
+                particles.push(pObj);
             }
         }
 
@@ -694,7 +768,6 @@
             if (isActive && timeRemaining > 0) {
                 let toSpawn = spawnChance * 60 * delta;
                 for (let i = 0; i < Math.floor(toSpawn) + (Math.random() < (toSpawn % 1) ? 1 : 0); i++) {
-                    // Partikel Spawning (mit Spill-Wahrscheinlichkeit)
                     let x;
                     if (Math.random() > 0.008) x = glass.x + 10 + Math.random()*(glass.w-20);
                     else x = Math.random() > 0.5 ? glass.x - 15 - Math.random()*20 : glass.x + glass.w + 15 + Math.random()*20;
@@ -704,7 +777,6 @@
             for (let i = particles.length - 1; i >= 0; i--) if (particles[i].update(delta)) particles[i].draw(); else particles.splice(i, 1);
             ctx.restore(); updateNavigationIndicator();
             
-            // STATUS LOGIK FÜR DRAG-HINT (Präzise gefiltert)
             if (!isActive && !isFinished && !isExploded) {
                 if (hasSandInGlassBoundaries()) {
                     dragHint.innerText = "SAND FÄLLT NOCH INS GLAS...";
@@ -716,9 +788,7 @@
                     if (camera.isPanning) dragHint.classList.add('hidden');
                     else dragHint.classList.remove('hidden');
                 }
-            } else {
-                dragHint.classList.add('hidden');
-            }
+            } else { dragHint.classList.add('hidden'); }
 
             if (!isAdjusting) updateControlPosition(); 
             requestAnimationFrame(animate);
