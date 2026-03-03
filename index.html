@@ -1,11 +1,13 @@
 <!-- 
     Change Log
-    Focus on Time - Foonti v1.3.9
+    Focus on Time - Foonti v1.4.1
     Änderungen: 
-    - Neu: Tag-Anzeige erweitert um "Verbleibende Zeit" und "Verstrichene Zeit" gleichzeitig.
-    - UI: Optimierung der Tag-Dimensionen für bessere Lesbarkeit der Zeitwerte.
-    - Logik: Präzise Volumen-Zeit-Kopplung (v1.3.9) beibehalten.
-    - UI: Kompaktes vertikales Design (v1.3.8) beibehalten.
+    - Neu: Timer-Logik auf absolute Zeitstempel umgestellt (Date.now()).
+    - Optimierung: Timer läuft präzise im Hintergrund/Standby weiter.
+    - Logik: "Catch-up" Mechanismus für Sandpartikel bei Tab-Reaktivierung integriert.
+    - UI: Tag-Anzeige (v1.3.9) und alle Effekte (v1.4.0) vollständig erhalten.
+    - Logik: Präzise Volumen-Zeit-Kopplung beibehalten.
+    - UI: Kompaktes vertikales Design integriert.
     - Alle Effekte (Pulse, Glow, Explosion, Dampf) integriert.
     - Neu: Präzise Volumen-Zeit-Kopplung (Sandmenge entspricht exakt dem Timer-Fortschritt)
     - Neu: Proportionale Füllhöhe egal ob 1 Minute oder 120 Minuten Dauer
@@ -44,7 +46,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Digitaler Sandregen - v1.4.0</title>
+    <title>Digitaler Sandregen - v1.4.1</title>
     <style>
         :root {
             --bg-color: #050505;
@@ -290,7 +292,7 @@
         let duration = 25 * 60; 
         let timeRemaining = duration;
         let timeSinceFinished = 0;
-        let lastTimestamp = 0;
+        let lastUpdateTime = 0; // Absolute Zeit für Hintergrund-Support
         let tagColor = '#191919';
         let tagName = 'Fokus';
         let pulsePhase = 0;
@@ -545,7 +547,7 @@
             const { x, y, w, h, thickness, cornerRadius } = glass;
             const currentPhase = getPhaseData();
             ctx.save();
-            if (particles.length > 0) {
+            if (isActive && particles.length > 0) {
                 ctx.shadowBlur = 30; ctx.shadowColor = `hsl(${currentPhase.h}, ${currentPhase.s}%, 65%)`; 
             }
             ctx.fillStyle = 'rgba(255, 255, 255, 0.02)'; ctx.fillRect(x, y, w, h);
@@ -573,7 +575,6 @@
                 ctx.fillText(min, x - 10, markY + 3);
             }
             
-            // TAG ANZEIGE ERWEITERT (Verbleibend & Verstrichen)
             const tagX = x + w + 35; const tagY = y + 50;
             const tagW = 95; const tagH = isFinished ? 50 : 70;
             
@@ -590,13 +591,11 @@
             ctx.letterSpacing = "1px"; ctx.fillText(tagName.toUpperCase(), tagX + tagW/2, tagY + 15);
             
             if (!isFinished) {
-                // Verbleibend
                 ctx.font = '600 6px Inter'; ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
                 ctx.fillText("VERBLEIBEND", tagX + tagW/2, tagY + 26);
                 ctx.fillStyle = 'white'; ctx.font = '200 16px Inter'; ctx.letterSpacing = "0px";
                 ctx.fillText(formatTime(timeRemaining), tagX + tagW/2, tagY + 41);
                 
-                // Verstrichen
                 ctx.font = '600 6px Inter'; ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
                 ctx.fillText("VERSTRICHEN", tagX + tagW/2, tagY + 52);
                 ctx.fillStyle = 'rgba(255, 255, 255, 0.6)'; ctx.font = '400 10px Inter';
@@ -623,37 +622,60 @@
             return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
         }
 
-        function spawnParticles() {
+        function spawnParticles(delta) {
             if (!isActive || timeRemaining <= 0) return;
-            let toSpawn = Math.floor(spawnChance);
-            if (Math.random() < (spawnChance % 1)) toSpawn++;
+            
+            // Berechnung der Partikelanzahl basierend auf verstrichener Zeit (delta)
+            // Dies korrigiert Sprünge, wenn der Tab im Hintergrund war.
+            let toSpawn = spawnChance * 60 * delta; 
+            
             const phaseData = getPhaseData();
             const spawnMargin = (glass.thickness / 2) + 1;
-            for (let i = 0; i < toSpawn; i++) {
+            
+            const count = Math.floor(toSpawn) + (Math.random() < (toSpawn % 1) ? 1 : 0);
+            
+            for (let i = 0; i < count; i++) {
                 let x;
-                if (Math.random() > 0.006) x = (glass.x + spawnMargin) + Math.random() * (glass.w - spawnMargin * 2);
-                else {
+                if (Math.random() > 0.006) {
+                    x = (glass.x + spawnMargin) + Math.random() * (glass.w - spawnMargin * 2);
+                } else {
                     const side = Math.random() > 0.5 ? 1 : -1; 
                     x = side === 1 ? (glass.x + glass.w) + Math.random() * 20 : (glass.x) - Math.random() * 20;
                 }
-                particles.push(new Particle(x, phaseData));
+                
+                // Bei großen Sprüngen (Hintergrund-Catchup) verteilen wir die Partikel 
+                // vertikal etwas, um Klumpenbildung zu vermeiden.
+                let startY = -15;
+                if (delta > 0.1) startY = -15 - (Math.random() * delta * 100);
+                
+                particles.push(new Particle(x, phaseData, startY));
             }
         }
 
         function animate(timestamp) {
+            const now = Date.now();
+            if (!lastUpdateTime) lastUpdateTime = now;
+            const delta = (now - lastUpdateTime) / 1000;
+            lastUpdateTime = now;
+
             ctx.clearRect(0, 0, width, height);
             ctx.drawImage(floorBuffer, 0, 0);
             if (!isExploded) ctx.drawImage(glass.buffer, glass.x, glass.y);
-            if (!lastTimestamp) lastTimestamp = timestamp;
-            const delta = (timestamp - lastTimestamp) / 1000;
+            
             if (isActive && timeRemaining > 0) {
                 timeRemaining -= delta;
-                if (timeRemaining <= 0) { timeRemaining = 0; isActive = false; isFinished = true; startBtn.innerText = "Neu Starten"; timeSinceFinished = 0; }
+                if (timeRemaining <= 0) { 
+                    timeRemaining = 0; 
+                    isActive = false; 
+                    isFinished = true; 
+                    startBtn.innerText = "Neu Starten"; 
+                    timeSinceFinished = 0; 
+                }
             } else if (isFinished) {
                 timeSinceFinished += delta;
                 if (!isExploded && timeSinceFinished >= duration) explodeGlass();
             }
-            lastTimestamp = timestamp;
+            
             if (isFinished && !isExploded) {
                 const progress = Math.min(1, timeSinceFinished / duration);
                 const easedProgress = Math.pow(progress, 4); 
@@ -664,6 +686,7 @@
                 ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = pulse * pulseStrength;
                 ctx.drawImage(glass.buffer, glass.x, glass.y); ctx.restore();
             }
+            
             if (isFinished) {
                 if (Math.random() < 0.25) {
                     const steamX = isExploded ? glass.x + glass.w / 2 + (Math.random() - 0.5) * 100 : glass.x + Math.random() * glass.w;
@@ -682,10 +705,14 @@
                 if (isExploded) { ctx.font = '700 9px Inter'; ctx.fillStyle = 'rgba(255, 0, 0, 0.5)'; ctx.fillText("STRUKTUR VERLOREN", glass.x + glass.w / 2, timerY + 35); }
                 ctx.restore();
             }
-            drawUIElements(); spawnParticles();
+            
+            drawUIElements(); 
+            spawnParticles(delta);
+            
             for (let i = particles.length - 1; i >= 0; i--) {
                 if (particles[i].update(delta)) particles[i].draw(); else particles.splice(i, 1);
             }
+            
             requestAnimationFrame(animate);
         }
 
@@ -701,6 +728,7 @@
             const newH = parseInt(e.target.value); const diff = newH - glass.h;
             glass.y -= diff; glass.h = newH; heightLabel.innerText = newH; updateGlassHeights(); updateControlPosition();
         });
+        
         startBtn.addEventListener('click', () => {
             if (isFinished) { resetSession(); return; }
             if (!isActive) {
@@ -711,10 +739,18 @@
                     settingsGroup.classList.add('hidden'); resetBtn.classList.remove('hidden'); dragHint.classList.add('hidden');
                     glass.ctx.clearRect(0, 0, glass.w, glass.h); floorCtx.clearRect(0, 0, width, height);
                 }
-                isActive = true; startBtn.innerText = "Pause";
-            } else { isActive = false; startBtn.innerText = "Fortsetzen"; if (particles.length === 0) dragHint.classList.remove('hidden'); }
+                isActive = true; 
+                lastUpdateTime = Date.now(); // Reset für präzisen Start
+                startBtn.innerText = "Pause";
+            } else { 
+                isActive = false; 
+                startBtn.innerText = "Fortsetzen"; 
+                if (particles.length === 0) dragHint.classList.remove('hidden'); 
+            }
         });
+        
         resetBtn.addEventListener('click', resetSession);
+        
         function resetSession() {
             isActive = false; isFinished = false; isExploded = false; particles = []; steamParticles = [];
             glassSandHeights.fill(0); floorSandHeights.fill(0); glass.ctx.clearRect(0, 0, glass.w, glass.h);
@@ -723,7 +759,9 @@
             timeSinceFinished = 0; pulsePhase = 0;
             startBtn.innerText = "Start"; settingsGroup.classList.remove('hidden'); resetBtn.classList.add('hidden');
             dragHint.innerText = "Zum Positionieren ziehen"; dragHint.classList.remove('hidden', 'disabled-hint');
+            lastUpdateTime = 0;
         }
+        
         init();
     </script>
 </body>
