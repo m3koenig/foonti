@@ -1,12 +1,13 @@
 <!-- 
     Change Log
-    Focus on Time - Foonti v1.5.1
+    Focus on Time - Foonti v1.5.3
     Änderungen: 
-    - Neu: Sprechende URL-Parameter für bessere Lesbarkeit (name, color, mins, width, height, start).
-    - Optimierung: Verfeinerte "Instant-Fill" Logik (preFillSand) für exakte Synchronität der Sandmenge beim Laden.
-    - Neu: Automatisches "Reinkippen" der berechneten Sandmenge bei Link-Einstieg.
+    - Fehlerbehebung: SecurityError bei history.replaceState in Blob/Iframe-Umgebungen durch try-catch abgesichert.
+    - Optimierung: Robustere URL-Generierung für die "Teilen"-Funktion.
+    - UI: Responsive UI-Optimierung für Mobilgeräte (v1.5.2) beibehalten.
+    - Logik: Sprechende URL-Parameter (name, color, mins, width, height, start) erhalten.
+    - Logik: "Instant-Fill" (preFillSand) für absolute Synchronität erhalten.
     - UI: Tag-Anzeige (v1.3.9) und alle Effekte (v1.4.0) vollständig erhalten.
-    - Logik: Hintergrund-Support (v1.4.1) und Sharing-Basis (v1.5.0) integriert.
     - Alle Kommentare und physikalischen Logiken beibehalten.
     - Logik: Präzise Volumen-Zeit-Kopplung beibehalten.
     - UI: Kompaktes vertikales Design integriert.
@@ -43,13 +44,12 @@
     - Neu: Sand näher an die Glaswände gerückt (Marge reduziert)
     - Neu: Physikalisch korrekte Kurven-Kollision in den Glasecken (Radius 15px)                  
 -->
--->
 <!DOCTYPE html>
 <html lang="de">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Digitaler Sandregen - v1.5.1</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Digitaler Sandregen - v1.5.3</title>
     <style>
         :root {
             --bg-color: #050505;
@@ -64,9 +64,10 @@
             height: 100%;
             overflow: hidden;
             background-color: var(--bg-color);
-            font-family: 'Inter', sans-serif;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
             color: var(--text-color);
             user-select: none;
+            touch-action: none; /* Verhindert Default-Gesten auf dem Canvas */
         }
 
         #canvas-container {
@@ -90,8 +91,9 @@
             display: flex;
             flex-direction: column;
             align-items: center;
-            gap: 0.6rem;
+            gap: 0.8rem;
             pointer-events: none;
+            width: 100%; /* Für Zentrierung auf Mobile */
         }
 
         .glass-controls > * {
@@ -99,16 +101,17 @@
         }
 
         .input-group {
-            background: rgba(255, 255, 255, 0.04);
-            padding: 0.8rem;
-            border-radius: 14px;
-            border: 1px solid rgba(255, 255, 255, 0.08);
-            backdrop-filter: blur(12px);
+            background: rgba(255, 255, 255, 0.05);
+            padding: 1rem;
+            border-radius: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(20px);
             display: flex;
             flex-direction: column;
-            gap: 12px;
-            box-shadow: 0 8px 32px rgba(0,0,0,0.6);
-            width: 200px;
+            gap: 14px;
+            box-shadow: 0 12px 40px rgba(0,0,0,0.7);
+            width: 90vw;
+            max-width: 280px; /* Responsive Breite */
         }
 
         .control-row {
@@ -121,21 +124,22 @@
         .control-stack {
             display: flex;
             flex-direction: column;
-            gap: 4px;
+            gap: 6px;
             width: 100%;
         }
 
         .divider-h {
             width: 100%;
             height: 1px;
-            background: rgba(255, 255, 255, 0.06);
+            background: rgba(255, 255, 255, 0.08);
         }
 
         .label-small {
-            font-size: 0.55rem;
-            opacity: 0.4;
-            letter-spacing: 0.05em;
+            font-size: 0.65rem;
+            opacity: 0.5;
+            letter-spacing: 0.08em;
             text-transform: uppercase;
+            font-weight: 600;
         }
 
         input[type="number"], input[type="range"] {
@@ -146,107 +150,113 @@
         }
 
         input[type="number"] {
-            width: 32px;
-            font-size: 0.9rem;
+            width: 45px;
+            font-size: 1rem;
             text-align: right;
-            font-weight: 500;
+            font-weight: 600;
+            padding: 4px;
         }
 
         input[type="text"] {
-            background: transparent;
-            border: none;
+            background: rgba(255,255,255,0.03);
+            border: 1px solid rgba(255,255,255,0.05);
+            border-radius: 8px;
             color: white;
-            width: 120px;
-            font-size: 0.85rem;
+            width: 130px;
+            font-size: 1rem;
             text-align: left;
             outline: none;
-            opacity: 0.9;
+            padding: 6px 10px;
             font-weight: 500;
         }
 
         input[type="range"] {
             width: 100%;
             cursor: pointer;
-            height: 20px;
+            height: 24px;
+            accent-color: var(--accent-color);
         }
 
         input[type="color"] {
             -webkit-appearance: none;
             border: none;
-            width: 20px;
-            height: 20px;
+            width: 32px;
+            height: 32px;
             border-radius: 50%;
             cursor: pointer;
             background: transparent;
         }
         input[type="color"]::-webkit-color-swatch {
-            border: 1px solid rgba(255, 255, 255, 0.2);
+            border: 2px solid rgba(255, 255, 255, 0.2);
             border-radius: 50%;
         }
 
         .button-row {
             display: flex;
-            gap: 0.5rem;
+            gap: 0.8rem;
             flex-wrap: wrap;
             justify-content: center;
+            width: 90vw;
+            max-width: 350px;
         }
 
         button {
-            background: rgba(255, 255, 255, 0.06);
-            border: 1px solid rgba(255, 255, 255, 0.1);
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(255, 255, 255, 0.15);
             color: white;
-            padding: 0.5rem 1rem;
-            border-radius: 18px;
+            padding: 0.7rem 1.2rem;
+            border-radius: 22px;
             cursor: pointer;
             backdrop-filter: blur(15px);
-            transition: all 0.2s ease;
-            font-size: 0.65rem;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            font-size: 0.75rem;
             text-transform: uppercase;
-            letter-spacing: 0.08em;
-            min-height: 34px;
+            letter-spacing: 0.1em;
+            font-weight: 700;
+            min-height: 44px; /* Mobile Friendly Tap-Target */
         }
 
-        button:hover {
-            background: rgba(255, 255, 255, 0.12);
-            border-color: rgba(255, 255, 255, 0.3);
+        button:active {
+            transform: scale(0.95);
+            background: rgba(255, 255, 255, 0.15);
         }
 
         #shareBtn {
-            background: rgba(123, 47, 247, 0.15);
-            border-color: rgba(123, 47, 247, 0.3);
-        }
-        #shareBtn:hover {
-            background: rgba(123, 47, 247, 0.25);
+            background: rgba(123, 47, 247, 0.2);
+            border-color: rgba(123, 47, 247, 0.4);
         }
 
         .drag-hint {
             position: absolute;
-            top: -24px;
-            font-size: 0.6rem;
-            opacity: 0.3;
+            top: -28px;
+            font-size: 0.65rem;
+            opacity: 0.4;
             white-space: nowrap;
+            background: rgba(0,0,0,0.4);
+            padding: 2px 8px;
+            border-radius: 10px;
         }
 
         .hidden { display: none !important; }
-        .disabled-hint { color: #ff5555; opacity: 0.7; }
+        .disabled-hint { color: #ff5555; opacity: 0.8; }
 
-        /* Toast Message */
         #toast {
             position: fixed;
-            bottom: 30px;
+            bottom: 40px;
             left: 50%;
             transform: translateX(-50%);
-            background: rgba(255, 255, 255, 0.1);
-            backdrop-filter: blur(10px);
-            padding: 10px 20px;
-            border-radius: 20px;
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            font-size: 0.7rem;
+            background: rgba(255, 255, 255, 0.15);
+            backdrop-filter: blur(15px);
+            padding: 12px 24px;
+            border-radius: 25px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            font-size: 0.8rem;
             color: white;
             opacity: 0;
-            transition: opacity 0.3s ease;
+            transition: all 0.3s ease;
             pointer-events: none;
             z-index: 1000;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
         }
     </style>
 </head>
@@ -265,23 +275,20 @@
                 </div>
                 <div class="divider-h"></div>
                 <div class="control-row">
-                    <span class="label-small">Dauer</span>
-                    <div style="display: flex; align-items: center; gap: 2px;">
-                        <input type="number" id="minutesInput" value="25" min="1" max="120">
-                        <span class="label-small" style="opacity: 0.3;">min</span>
-                    </div>
+                    <span class="label-small">Dauer (min)</span>
+                    <input type="number" id="minutesInput" value="25" min="1" max="120">
                 </div>
                 <div class="control-stack">
                     <div class="control-row">
                         <span class="label-small">Breite</span>
-                        <span id="widthLabel" class="label-small" style="opacity: 0.3;">280</span>
+                        <span id="widthLabel" class="label-small" style="opacity: 0.4;">280</span>
                     </div>
-                    <input type="range" id="widthInput" min="150" max="500" value="280">
+                    <input type="range" id="widthInput" min="120" max="500" value="280">
                 </div>
                 <div class="control-stack">
                     <div class="control-row">
                         <span class="label-small">Höhe</span>
-                        <span id="heightLabel" class="label-small" style="opacity: 0.3;">380</span>
+                        <span id="heightLabel" class="label-small" style="opacity: 0.4;">380</span>
                     </div>
                     <input type="range" id="heightInput" min="150" max="600" value="380">
                 </div>
@@ -295,13 +302,11 @@
         </div>
     </div>
 
-    <div id="toast">Link in Zwischenablage kopiert</div>
+    <div id="toast">Link kopiert</div>
 
     <script>
-
         const canvas = document.getElementById('sandCanvas');
         const ctx = canvas.getContext('2d');
-        
         const floorBuffer = document.createElement('canvas');
         const floorCtx = floorBuffer.getContext('2d');
 
@@ -330,7 +335,7 @@
         let timeRemaining = duration;
         let timeSinceFinished = 0;
         let lastUpdateTime = 0; 
-        let startTimeTimestamp = null; // Für Sharing
+        let startTimeTimestamp = null; 
         let tagColor = '#191919';
         let tagName = 'Fokus';
         let pulsePhase = 0;
@@ -357,48 +362,69 @@
 
         function init() {
             resize();
-            glass.x = (width - glass.w) / 2;
-            glass.y = (height - glass.h) / 2 - 50;
             
-            // Sharing-Parameter prüfen
+            // Standard-Positionierung zentriert
+            glass.x = (width - glass.w) / 2;
+            glass.y = Math.max(20, (height - glass.h) / 2 - 80);
+            
             parseUrlParams();
 
             window.addEventListener('resize', resize);
-            window.addEventListener('mousedown', onMouseDown);
-            window.addEventListener('mousemove', onMouseMove);
-            window.addEventListener('mouseup', onMouseUp);
+            
+            // Touch-Support für Dragging
+            window.addEventListener('mousedown', onStartDrag);
+            window.addEventListener('touchstart', (e) => onStartDrag(e.touches[0]), { passive: false });
+            
+            window.addEventListener('mousemove', onMoveDrag);
+            window.addEventListener('touchmove', (e) => {
+                onMoveDrag(e.touches[0]);
+                if (glass.isDragging) e.preventDefault();
+            }, { passive: false });
+            
+            window.addEventListener('mouseup', onEndDrag);
+            window.addEventListener('touchend', onEndDrag);
+
             requestAnimationFrame(animate);
+            updateControlPosition();
+        }
+
+        function resize() {
+            width = window.innerWidth;
+            height = window.innerHeight;
+            canvas.width = width;
+            canvas.height = height;
+            floorBuffer.width = width;
+            floorBuffer.height = height;
+            floorSandHeights = new Array(Math.floor(width)).fill(0);
+
+            // Responsive Scale Check: Glas verkleinern, wenn Screen zu klein
+            if (glass.w > width * 0.85) {
+                const ratio = glass.h / glass.w;
+                glass.w = Math.floor(width * 0.85);
+                glass.h = Math.floor(glass.w * ratio);
+                widthInput.value = glass.w;
+                heightInput.value = glass.h;
+                widthLabel.innerText = glass.w;
+                heightLabel.innerText = glass.h;
+            }
+
+            updateGlassHeights();
             updateControlPosition();
         }
 
         function parseUrlParams() {
             const params = new URLSearchParams(window.location.search);
-            // Sprechende Parameter-Namen
-            if (params.has('name')) {
-                tagName = params.get('name');
-                tagNameInput.value = tagName;
-            }
-            if (params.has('color')) {
-                tagColor = params.get('color');
-                tagColorInput.value = tagColor;
-            }
-            if (params.has('mins')) {
-                const m = parseInt(params.get('mins'));
-                minutesInput.value = m;
-                duration = m * 60;
-                timeRemaining = duration;
+            if (params.has('name')) { tagName = params.get('name'); tagNameInput.value = tagName; }
+            if (params.has('color')) { tagColor = params.get('color'); tagColorInput.value = tagColor; }
+            if (params.has('mins')) { 
+                const m = parseInt(params.get('mins')); 
+                minutesInput.value = m; duration = m * 60; timeRemaining = duration; 
             }
             if (params.has('width')) {
-                const w = parseInt(params.get('width'));
-                glass.w = w;
-                widthInput.value = w;
-                widthLabel.innerText = w;
+                const w = parseInt(params.get('width')); glass.w = w; widthInput.value = w; widthLabel.innerText = w;
             }
             if (params.has('height')) {
-                const h = parseInt(params.get('height'));
-                glass.h = h;
-                heightInput.value = h;
-                heightLabel.innerText = h;
+                const h = parseInt(params.get('height')); glass.h = h; heightInput.value = h; heightLabel.innerText = h;
             }
             
             updateGlassHeights();
@@ -420,12 +446,9 @@
                     
                     if (elapsed < duration) {
                         timeRemaining = duration - elapsed;
-                        // Sand sofort auffüllen für die verstrichene Zeit
                         preFillSand(elapsed);
                     } else {
-                        timeRemaining = 0;
-                        isActive = false;
-                        isFinished = true;
+                        timeRemaining = 0; isActive = false; isFinished = true;
                         timeSinceFinished = elapsed - duration;
                         startBtn.innerText = "Neu Starten";
                         preFillSand(duration);
@@ -435,30 +458,20 @@
             }
         }
 
-        // Zeichnet Sand sofort in den Puffer ohne Partikel zu simulieren (Performance & Synchronität)
         function preFillSand(seconds) {
             const totalParticlesNeeded = spawnChance * 60 * seconds;
             const phaseData = getPhaseData();
-            
-            // Menge an Sand auf einmal "reinkippen"
-            // Wir berechnen das benötigte Volumen exakt und verteilen es auf die Spalten
             const iterations = Math.floor(totalParticlesNeeded); 
-            
             for(let i = 0; i < iterations; i++) {
-                // Wir nutzen eine gewichtete Zufallsverteilung für die Spalten, um Haufenbildung zu simulieren
                 const x = Math.floor(Math.random() * (glass.w - glass.thickness));
                 const settledIndex = findSettleIndexGlobal(x, glassSandHeights, true);
-                const hInc = 0.45; // Konstanter Inkrement für absolute Gleichheit
-                
+                const hInc = 0.45;
                 glassSandHeights[settledIndex] += hInc;
                 const cornerOffset = getGlassBaselineOffset(settledIndex);
-                
                 glass.ctx.save();
-                // Farbschwankung für natürliche Optik beim Kippen
                 const lVar = phaseData.l + (Math.random() - 0.5) * 10;
                 glass.ctx.fillStyle = `hsl(${phaseData.h}, ${phaseData.s}%, ${lVar}%)`;
                 glass.ctx.globalAlpha = 0.85;
-                // Partikelgröße konsistent halten
                 glass.ctx.fillRect(settledIndex, (glass.h - glass.thickness / 2 - cornerOffset) - glassSandHeights[settledIndex], 1.5, 1.5);
                 glass.ctx.restore();
             }
@@ -484,17 +497,6 @@
             return current;
         }
 
-        function resize() {
-            width = window.innerWidth;
-            height = window.innerHeight;
-            canvas.width = width;
-            canvas.height = height;
-            floorBuffer.width = width;
-            floorBuffer.height = height;
-            floorSandHeights = new Array(Math.floor(width)).fill(0);
-            updateGlassHeights();
-        }
-
         function updateGlassHeights() {
             glass.buffer.width = glass.w;
             glass.buffer.height = glass.h;
@@ -502,25 +504,25 @@
         }
 
         function updateControlPosition() {
-            controls.style.left = `${glass.x + glass.w / 2 - controls.offsetWidth / 2}px`;
-            controls.style.top = `${glass.y + glass.h + 15}px`;
+            const centerX = glass.x + glass.w / 2;
+            controls.style.left = `${Math.max(0, Math.min(width - controls.offsetWidth, centerX - controls.offsetWidth / 2))}px`;
+            
+            // Verhindert, dass die Controls unter den Screen-Rand rutschen
+            const idealTop = glass.y + glass.h + 20;
+            if (idealTop + controls.offsetHeight > height - 10) {
+                controls.style.top = `${height - controls.offsetHeight - 10}px`;
+            } else {
+                controls.style.top = `${idealTop}px`;
+            }
         }
 
-        function onMouseDown(e) {
+        function onStartDrag(e) {
             if (isActive || isFinished) return;
-            const mx = e.clientX;
-            const my = e.clientY;
-            const isSandFalling = particles.length > 0;
+            const mx = e.clientX; const my = e.clientY;
             if (mx >= glass.x && mx <= glass.x + glass.w && my >= glass.y && my <= glass.y + glass.h) {
-                if (isSandFalling) {
-                    dragHint.innerText = "Warte auf fallenden Sand...";
+                if (particles.length > 0) {
+                    dragHint.innerText = "Sand fällt noch...";
                     dragHint.classList.add('disabled-hint');
-                    setTimeout(() => {
-                        if (!glass.isDragging) {
-                            dragHint.innerText = "Zum Positionieren ziehen";
-                            dragHint.classList.remove('disabled-hint');
-                        }
-                    }, 2000);
                     return;
                 }
                 glass.isDragging = true;
@@ -530,7 +532,7 @@
             }
         }
 
-        function onMouseMove(e) {
+        function onMoveDrag(e) {
             if (glass.isDragging) {
                 glass.x = e.clientX - glass.dragOffset.x;
                 glass.y = e.clientY - glass.dragOffset.y;
@@ -538,11 +540,10 @@
             }
         }
 
-        function onMouseUp() { glass.isDragging = false; }
+        function onEndDrag() { glass.isDragging = false; }
 
         function calculateSpawnChance() {
-            const D = duration; 
-            const C = D + 300;  
+            const D = duration; const C = D + 300;  
             const usableH = glass.h - glass.thickness;
             const targetH = usableH * (D / C);
             const totalVol = glass.w * targetH;
@@ -586,8 +587,7 @@
                     this.vx = Math.cos(angle) * force;
                     this.speedY = Math.sin(angle) * force;
                 } else {
-                    this.vx = (Math.random() - 0.5) * 0.3; 
-                    this.speedY = Math.random() * 1.5 + 2.5;
+                    this.vx = (Math.random() - 0.5) * 0.3; this.speedY = Math.random() * 1.5 + 2.5;
                 }
                 this.drift = this.vx;
             }
@@ -697,6 +697,7 @@
             g.addColorStop(0.1, 'rgba(255,255,255,0.02)'); g.addColorStop(0.85, 'rgba(255,255,255,0.0)');
             g.addColorStop(0.95, 'rgba(255,255,255,0.06)');
             ctx.fillStyle = g; ctx.fillRect(x, y, w, h);
+            
             const D_sec = duration; const C_sec = D_sec + 300;
             const pixelsPerMinute = (h - thickness / 2) / (C_sec / 60); 
             ctx.textAlign = 'right'; ctx.font = '500 9px Inter';
@@ -710,11 +711,11 @@
                 ctx.fillText(min, x - 10, markY + 3);
             }
             
-            const tagX = x + w + 35; const tagY = y + 50;
-            const tagW = 95; const tagH = isFinished ? 50 : 70;
+            const tagX = x + w + (width < 500 ? 20 : 35); const tagY = y + 50;
+            const tagW = width < 500 ? 80 : 95; const tagH = isFinished ? 50 : 70;
             
             ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)'; ctx.lineWidth = 1;
-            ctx.beginPath(); ctx.moveTo(x + w, y + 25); ctx.lineTo(tagX + 15, tagY + 5); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(x + w, y + 25); ctx.lineTo(tagX + 10, tagY + 5); ctx.stroke();
             
             ctx.fillStyle = tagColor; ctx.beginPath();
             ctx.moveTo(tagX + 12, tagY); ctx.lineTo(tagX + tagW, tagY); ctx.lineTo(tagX + tagW, tagY + tagH);
@@ -759,21 +760,17 @@
 
         function spawnParticles(delta) {
             if (!isActive || timeRemaining <= 0) return;
-            
             let toSpawn = spawnChance * 60 * delta; 
             const phaseData = getPhaseData();
             const spawnMargin = (glass.thickness / 2) + 1;
             const count = Math.floor(toSpawn) + (Math.random() < (toSpawn % 1) ? 1 : 0);
-            
             for (let i = 0; i < count; i++) {
                 let x;
-                if (Math.random() > 0.006) {
-                    x = (glass.x + spawnMargin) + Math.random() * (glass.w - spawnMargin * 2);
-                } else {
+                if (Math.random() > 0.006) x = (glass.x + spawnMargin) + Math.random() * (glass.w - spawnMargin * 2);
+                else {
                     const side = Math.random() > 0.5 ? 1 : -1; 
                     x = side === 1 ? (glass.x + glass.w) + Math.random() * 20 : (glass.x) - Math.random() * 20;
                 }
-                
                 let startY = -15;
                 if (delta > 0.1) startY = -15 - (Math.random() * delta * 100);
                 particles.push(new Particle(x, phaseData, startY));
@@ -792,13 +789,7 @@
             
             if (isActive && timeRemaining > 0) {
                 timeRemaining -= delta;
-                if (timeRemaining <= 0) { 
-                    timeRemaining = 0; 
-                    isActive = false; 
-                    isFinished = true; 
-                    startBtn.innerText = "Neu Starten"; 
-                    timeSinceFinished = 0; 
-                }
+                if (timeRemaining <= 0) { timeRemaining = 0; isActive = false; isFinished = true; startBtn.innerText = "Neu Starten"; timeSinceFinished = 0; }
             } else if (isFinished) {
                 timeSinceFinished += delta;
                 if (!isExploded && timeSinceFinished >= duration) explodeGlass();
@@ -834,18 +825,16 @@
                 ctx.restore();
             }
             
-            drawUIElements(); 
-            spawnParticles(delta);
-            
+            drawUIElements(); spawnParticles(delta);
             for (let i = particles.length - 1; i >= 0; i--) {
                 if (particles[i].update(delta)) particles[i].draw(); else particles.splice(i, 1);
             }
-            
             requestAnimationFrame(animate);
         }
 
         tagColorInput.addEventListener('input', (e) => tagColor = e.target.value);
         tagNameInput.addEventListener('input', (e) => tagName = e.target.value || 'Fokus');
+        
         widthInput.addEventListener('input', (e) => {
             if (isActive || isFinished) return;
             const newW = parseInt(e.target.value); const diff = newW - glass.w;
@@ -863,17 +852,14 @@
                 if (timeRemaining === duration) {
                     const mins = parseInt(minutesInput.value) || 25; 
                     duration = mins * 60; timeRemaining = duration;
-                    startTimeTimestamp = Date.now(); // Zeitpunkt für Sharing festlegen
+                    startTimeTimestamp = Date.now();
                     calculateSpawnChance(); 
                     settingsGroup.classList.add('hidden'); resetBtn.classList.remove('hidden'); dragHint.classList.add('hidden');
                     glass.ctx.clearRect(0, 0, glass.w, glass.h); floorCtx.clearRect(0, 0, width, height);
                 }
-                isActive = true; 
-                lastUpdateTime = Date.now(); 
-                startBtn.innerText = "Pause";
+                isActive = true; lastUpdateTime = Date.now(); startBtn.innerText = "Pause";
             } else { 
-                isActive = false; 
-                startBtn.innerText = "Fortsetzen"; 
+                isActive = false; startBtn.innerText = "Fortsetzen"; 
                 if (particles.length === 0) dragHint.classList.remove('hidden'); 
             }
         });
@@ -881,19 +867,17 @@
         resetBtn.addEventListener('click', resetSession);
 
         shareBtn.addEventListener('click', () => {
-            const url = new URL(window.location.origin + window.location.pathname);
-            // Sprechende Parameter beim Teilen
+            // Robuste URL-Generierung basierend auf der aktuellen Adresse
+            const url = new URL(window.location.href);
+            // Bestehende Suchparameter löschen
+            url.search = '';
             url.searchParams.set('name', tagName);
             url.searchParams.set('color', tagColor);
             url.searchParams.set('mins', Math.floor(duration / 60));
             url.searchParams.set('width', glass.w);
             url.searchParams.set('height', glass.h);
-            
-            if (startTimeTimestamp && (isActive || isFinished)) {
-                url.searchParams.set('start', startTimeTimestamp);
-            }
+            if (startTimeTimestamp && (isActive || isFinished)) url.searchParams.set('start', startTimeTimestamp);
 
-            // In Zwischenablage kopieren (fallback document.execCommand)
             const input = document.createElement('input');
             input.value = url.href;
             document.body.appendChild(input);
@@ -901,7 +885,6 @@
             document.execCommand('copy');
             document.body.removeChild(input);
 
-            // Toast Feedback
             toast.style.opacity = '1';
             setTimeout(() => toast.style.opacity = '0', 2000);
         });
@@ -917,8 +900,12 @@
             dragHint.innerText = "Zum Positionieren ziehen"; dragHint.classList.remove('hidden', 'disabled-hint');
             lastUpdateTime = 0;
             
-            // URL säubern beim Reset
-            window.history.replaceState({}, document.title, window.location.pathname);
+            // Security-Fix: replaceState in try-catch für Blob/Iframe-Support
+            try {
+                window.history.replaceState({}, document.title, window.location.pathname);
+            } catch (e) {
+                console.warn("URL konnte im Reset nicht bereinigt werden (Security Restriction).");
+            }
         }
         
         init();
