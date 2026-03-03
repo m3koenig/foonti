@@ -1,7 +1,12 @@
- <!-- 
+<!-- 
     Change Log
     Focus on Time - Foonti v1.3.9
     Änderungen: 
+    - Neu: Tag-Anzeige erweitert um "Verbleibende Zeit" und "Verstrichene Zeit" gleichzeitig.
+    - UI: Optimierung der Tag-Dimensionen für bessere Lesbarkeit der Zeitwerte.
+    - Logik: Präzise Volumen-Zeit-Kopplung (v1.3.9) beibehalten.
+    - UI: Kompaktes vertikales Design (v1.3.8) beibehalten.
+    - Alle Effekte (Pulse, Glow, Explosion, Dampf) integriert.
     - Neu: Präzise Volumen-Zeit-Kopplung (Sandmenge entspricht exakt dem Timer-Fortschritt)
     - Neu: Proportionale Füllhöhe egal ob 1 Minute oder 120 Minuten Dauer
     - UI: Kompaktes vertikales Design (v1.3.8) beibehalten
@@ -39,7 +44,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Focus on Time - Foonti - v1.3.9</title>
+    <title>Digitaler Sandregen - v1.4.0</title>
     <style>
         :root {
             --bg-color: #050505;
@@ -255,7 +260,7 @@
         </div>
     </div>
 
-    <script>       
+    <script>
 
         const canvas = document.getElementById('sandCanvas');
         const ctx = canvas.getContext('2d');
@@ -378,29 +383,15 @@
 
         function onMouseUp() { glass.isDragging = false; }
 
-        /**
-         * NEU v1.3.9: Präzise Berechnung der Spawn-Rate basierend auf Dauer und Ziel-Volumen
-         */
         function calculateSpawnChance() {
-            const D = duration; // Timer Dauer in Sekunden
-            const C = D + 300;  // Kapazität des Glases (Timer + 5 Min Puffer)
+            const D = duration; 
+            const C = D + 300;  
             const usableH = glass.h - glass.thickness;
-            
-            // Zielhöhe ist der Anteil der Timer-Dauer an der Gesamtkapazität
             const targetH = usableH * (D / C);
-            
-            // Ziel-Volumen in Pixeln
             const totalVol = glass.w * targetH;
-            
-            // Durchschnittlicher Höhenzuwachs pro gelandetem Partikel (~0.55 inkl. Nachbarn)
             const inc = 0.55; 
             const totalParticlesNeeded = totalVol / inc;
-            
-            // spawnChance ist die Anzahl der Partikel pro Frame (bei ca. 60 FPS)
-            // Formel: Gesamtpartikel / (Sekunden * 60)
             spawnChance = totalParticlesNeeded / (D * 60);
-            
-            // Sanity Check: Mindest- und Höchstwerte für flüssige Animation
             spawnChance = Math.max(0.01, Math.min(spawnChance, 15)); 
         }
 
@@ -581,20 +572,43 @@
                 ctx.fillStyle = isTarget ? 'rgba(255, 255, 255, 0.6)' : 'rgba(255, 255, 255, 0.3)';
                 ctx.fillText(min, x - 10, markY + 3);
             }
+            
+            // TAG ANZEIGE ERWEITERT (Verbleibend & Verstrichen)
             const tagX = x + w + 35; const tagY = y + 50;
+            const tagW = 95; const tagH = isFinished ? 50 : 70;
+            
             ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)'; ctx.lineWidth = 1;
             ctx.beginPath(); ctx.moveTo(x + w, y + 25); ctx.lineTo(tagX + 15, tagY + 5); ctx.stroke();
+            
             ctx.fillStyle = tagColor; ctx.beginPath();
-            ctx.moveTo(tagX + 12, tagY); ctx.lineTo(tagX + 90, tagY); ctx.lineTo(tagX + 90, tagY + 45);
-            ctx.lineTo(tagX, tagY + 45); ctx.lineTo(tagX, tagY + 12); ctx.closePath(); ctx.fill();
+            ctx.moveTo(tagX + 12, tagY); ctx.lineTo(tagX + tagW, tagY); ctx.lineTo(tagX + tagW, tagY + tagH);
+            ctx.lineTo(tagX, tagY + tagH); ctx.lineTo(tagX, tagY + 12); ctx.closePath(); ctx.fill();
+            
             ctx.fillStyle = '#050505'; ctx.beginPath(); ctx.arc(tagX + 12, tagY + 12, 3, 0, Math.PI * 2); ctx.fill();
+            
             ctx.textAlign = 'center'; ctx.fillStyle = 'rgba(255, 255, 255, 0.7)'; ctx.font = '600 8px Inter';
-            ctx.letterSpacing = "1px"; ctx.fillText(tagName.toUpperCase(), tagX + 50, tagY + 15);
-            ctx.fillStyle = 'white'; ctx.font = '200 20px Inter'; ctx.letterSpacing = "0px";
-            ctx.fillText(formatTime(timeRemaining), tagX + 50, tagY + 35);
+            ctx.letterSpacing = "1px"; ctx.fillText(tagName.toUpperCase(), tagX + tagW/2, tagY + 15);
+            
+            if (!isFinished) {
+                // Verbleibend
+                ctx.font = '600 6px Inter'; ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
+                ctx.fillText("VERBLEIBEND", tagX + tagW/2, tagY + 26);
+                ctx.fillStyle = 'white'; ctx.font = '200 16px Inter'; ctx.letterSpacing = "0px";
+                ctx.fillText(formatTime(timeRemaining), tagX + tagW/2, tagY + 41);
+                
+                // Verstrichen
+                ctx.font = '600 6px Inter'; ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
+                ctx.fillText("VERSTRICHEN", tagX + tagW/2, tagY + 52);
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.6)'; ctx.font = '400 10px Inter';
+                ctx.fillText(formatTime(duration - timeRemaining), tagX + tagW/2, tagY + 63);
+            } else {
+                ctx.fillStyle = 'white'; ctx.font = '200 20px Inter'; ctx.letterSpacing = "0px";
+                ctx.fillText("00:00", tagX + tagW/2, tagY + 38);
+            }
+            
             ctx.fillStyle = `hsl(${currentPhase.h}, ${currentPhase.s}%, ${currentPhase.l}%)`;
             ctx.font = '700 7px Inter'; ctx.letterSpacing = "2px";
-            ctx.fillText(currentPhase.label.toUpperCase(), tagX + 50, tagY + 58);
+            ctx.fillText(currentPhase.label.toUpperCase(), tagX + tagW/2, tagY + tagH + 12);
             ctx.restore();
         }
 
