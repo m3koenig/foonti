@@ -1,73 +1,3 @@
-<!-- 
-    Change Log
-    Focus on Time - Foonti v1.7.4
-    Änderungen: 
-    - Fix: Das Label zeigt nach Ablauf oder Explosion nun die ursprüngliche Zielzeit (duration) anstatt 00:00.
-    - Neu: Persistente Darstellung der Fokus-Ziele im "Post-Mortem"-Zustand.
-    - Erhalt: Alle Performance-Boosts (fillRect), Tag-Farben-Logik, mobile Pinch-Gesten und 30%-Limit-Logik.
-    - Kommentare und physikalische Logiken beibehalten.
-    - Neu: Tag-Farbe steuert nun die erste Sand-Phase und UI-Akzente.
-    - Neu: Zeitdarstellung deutlich vergrößert und mit "Breathe"-Animation bei Zeitdruck versehen.
-    - Neu: Post-Timer Limit auf 30% der Dauer verschärft (schnellere Explosion).
-    - Performance: Umstellung von arc() auf fillRect() für Partikel (massiver Geschwindigkeitsvorteil).
-    - Performance: Reduzierung der Schatten-Komplexität bei hohem Partikelaufkommen.
-    - Erhalt: Alle physikalischen Logiken, Burst-Load und mobile Pinch-Gesten.
-    - Bugfix: Sandmenge beim Burst (geteilte Links) korrigiert. Nutzt jetzt Volumen-Skalierung, damit der Füllstand zur Zeit passt.
-    - Logik: Partikel im Burst erhalten ein 'volumeWeight', um fehlende Partikelanzahl bei großen Zeiträumen zu kompensieren.
-    - Physik: Farbschichtung im Schwall optimiert für präzise historische Darstellung.
-    - Bugfix: Erneute Absicherung von getPhaseData im globalen Scope.
-    - Erhalt: Alle Performance-Optimierungen (v1.6.7) und mobile Gesten.
-    - Bugfix: ReferenceError "getPhaseData is not defined" behoben. Funktions-Scope bereinigt.
-    - Physik: Fallweg der Partikel am Glas vorbei um 100% (eine Glashöhe) verlängert (v1.6.8).
-    - Bugfix: Glas-Verschiebung im Pausenmodus (v1.6.8). Es ist nun sofort beweglich, sobald der Sand im Glas gelandet ist.
-    - Logik: hasSandInGlassBoundaries verfeinert, um nur aktive, nicht-aufgelöste Partikel im Glasbereich zu zählen.
-    - Performance: Dissolve-Startpunkt für Spill-Sand nach unten verschoben.
-    - Erhalt: Alle Features wie Pinch-to-Zoom, Burst-Load, Fokus-Wolke und stabile Slider.
-    - Neu: Pinch-to-Zoom für Smartphones integriert (Zwei-Finger-Geste zum Zoomen).
-    - Neu: "Sand-Burst" beim Laden von geteilten Links. Partikel fallen nun in einem großen Schwall von oben herab.
-    - Korrektur: Partikel im Burst erhalten die historisch korrekten Farben der jeweiligen Zeitphasen.
-    - Optimierung: Touch-Events für flüssigeres Panning und Zooming auf mobilen Geräten überarbeitet.
-    - Erhalt: Alle bisherigen Features (Endless Paper, Nav-Pfeile, Fokus-Wolke, stabile Slider).    
-    - Logik: Die Drag-Sperre prüft nun nur noch Partikel, die sich innerhalb der Breite des Glases befinden.
-    - Optimierung: Sand, der neben das Glas fällt, blockiert das Verschieben nicht mehr.
-    - UI: Der "SAND FÄLLT NOCH..."-Hinweis erscheint nur bei Partikeln im Zielbereich des Glases.
-    - Erhalt: Alle bisherigen Effekte (Wolke, Endless Paper, Nav-Pfeile, stabile Slider).
-    - Alle Kommentare und physikalischen Logiken beibehalten.
-    - Logik: Präzise Volumen-Zeit-Kopplung beibehalten.
-    - UI: Kompaktes vertikales Design integriert.
-    - Alle Effekte (Pulse, Glow, Explosion, Dampf) integriert.
-    - Neu: Präzise Volumen-Zeit-Kopplung (Sandmenge entspricht exakt dem Timer-Fortschritt)
-    - Neu: Proportionale Füllhöhe egal ob 1 Minute oder 120 Minuten Dauer
-    - UI: Kompaktes vertikales Design (v1.3.8) beibehalten
-    - Logik: Symmetrisches Resize (v1.3.6) beibehalten
-    - Alle Effekte (Pulse, Glow, Explosion, Dampf) integriert
-    - UI: Kompakteres Design (360px Breite) für bessere Übersichtlichkeit
-    - UI: Optimierte Touch-Bereiche für Regler und Buttons
-    - Logik: Symmetrisches Resize und stabile UI-Position (v1.3.6) erhalten
-    - Alle Effekte (Pulsieren, Explosion, Dampf) bleiben vollständig erhalten
-    - Fehlerbehebung: Flackern der Pulsation durch Phasen-Akkumulation (smooth transitions) behoben
-    - Optimierung: Pulsationsrate dynamisch angepasst (65 BPM bis 200 BPM vor der Explosion)
-    - Optimierung: Pulsieren massiv verlangsamt (Human Heartbeat Rhythmus), startet extrem ruhig
-    - Optimierung: Beschleunigungskurve erhöht (Cubic-Out), damit die Ruhe länger anhält
-    - Neu: Glas-Explosion wenn die Count-up Zeit die ursprüngliche Dauer erreicht
-    - Neu: Sand verteilt sich bei Explosion über den gesamten Screen
-    - Neu: Dampf-Effekt nach Abschluss des Timers (läuft nach Explosion weiter)
-    - Neu: Count-up Timer im aufsteigenden Dampf zeigt verstrichene Zeit nach Ende
-    - Neu: Pulsierender Sandeffekt bei Fertigstellung
-    - Neu: Anpassbarer Name auf dem Tag (Standard: "Fokus"), editierbar über die UI
-    - Neu: "Spill"-Effekt (Sand außerhalb des Glases) drastisch reduziert für "Versehen"-Optik
-    - Optimierung: Partikel-System verbessert durch Schwerkraft-Beschleunigung und Wobble-Effekt
-    - Optimierung: Verfeinerte findSettleIndex Logik für natürlichere Schüttkegel (Sandhaufen)
-    - Visuell: Partikel pulsieren leicht in ihrer Opazität beim Fallen für organischen Glanz
-    - Neu: Das Glas bietet nun immer Platz für 5 Minuten mehr als eingestellt (Puffer-Volumen)
-    - Optimierung: spawnChance Berechnung korrigiert, um die Zielhöhe exakt zu treffen
-    - UI: Messpunkte und Skalierung berücksichtigen nun die 5-Minuten-Erweiterung
-    - Fehlerbehebung: Flackern minimiert durch strikte Render-Order und Alpha-Reset im Buffer
-    - Optimierung: Sand-Abstand zur Glaswand vergrößert (Kollisionsschutz)
-    - Neu: Sand bündig auf dem Glasboden (Offset Korrektur auf thickness/2)
-    - Neu: Sand näher an die Glaswände gerückt (Marge reduziert)
-    - Neu: Physikalisch korrekte Kurven-Kollision in den Glasecken (Radius 15px) 
--->    
 <!DOCTYPE html>
 <html lang="de">
 <head>
@@ -997,3 +927,73 @@
     </script>
 </body>
 </html>
+<!-- 
+    Change Log
+    Focus on Time - Foonti v1.7.4
+    Änderungen: 
+    - Fix: Das Label zeigt nach Ablauf oder Explosion nun die ursprüngliche Zielzeit (duration) anstatt 00:00.
+    - Neu: Persistente Darstellung der Fokus-Ziele im "Post-Mortem"-Zustand.
+    - Erhalt: Alle Performance-Boosts (fillRect), Tag-Farben-Logik, mobile Pinch-Gesten und 30%-Limit-Logik.
+    - Kommentare und physikalische Logiken beibehalten.
+    - Neu: Tag-Farbe steuert nun die erste Sand-Phase und UI-Akzente.
+    - Neu: Zeitdarstellung deutlich vergrößert und mit "Breathe"-Animation bei Zeitdruck versehen.
+    - Neu: Post-Timer Limit auf 30% der Dauer verschärft (schnellere Explosion).
+    - Performance: Umstellung von arc() auf fillRect() für Partikel (massiver Geschwindigkeitsvorteil).
+    - Performance: Reduzierung der Schatten-Komplexität bei hohem Partikelaufkommen.
+    - Erhalt: Alle physikalischen Logiken, Burst-Load und mobile Pinch-Gesten.
+    - Bugfix: Sandmenge beim Burst (geteilte Links) korrigiert. Nutzt jetzt Volumen-Skalierung, damit der Füllstand zur Zeit passt.
+    - Logik: Partikel im Burst erhalten ein 'volumeWeight', um fehlende Partikelanzahl bei großen Zeiträumen zu kompensieren.
+    - Physik: Farbschichtung im Schwall optimiert für präzise historische Darstellung.
+    - Bugfix: Erneute Absicherung von getPhaseData im globalen Scope.
+    - Erhalt: Alle Performance-Optimierungen (v1.6.7) und mobile Gesten.
+    - Bugfix: ReferenceError "getPhaseData is not defined" behoben. Funktions-Scope bereinigt.
+    - Physik: Fallweg der Partikel am Glas vorbei um 100% (eine Glashöhe) verlängert (v1.6.8).
+    - Bugfix: Glas-Verschiebung im Pausenmodus (v1.6.8). Es ist nun sofort beweglich, sobald der Sand im Glas gelandet ist.
+    - Logik: hasSandInGlassBoundaries verfeinert, um nur aktive, nicht-aufgelöste Partikel im Glasbereich zu zählen.
+    - Performance: Dissolve-Startpunkt für Spill-Sand nach unten verschoben.
+    - Erhalt: Alle Features wie Pinch-to-Zoom, Burst-Load, Fokus-Wolke und stabile Slider.
+    - Neu: Pinch-to-Zoom für Smartphones integriert (Zwei-Finger-Geste zum Zoomen).
+    - Neu: "Sand-Burst" beim Laden von geteilten Links. Partikel fallen nun in einem großen Schwall von oben herab.
+    - Korrektur: Partikel im Burst erhalten die historisch korrekten Farben der jeweiligen Zeitphasen.
+    - Optimierung: Touch-Events für flüssigeres Panning und Zooming auf mobilen Geräten überarbeitet.
+    - Erhalt: Alle bisherigen Features (Endless Paper, Nav-Pfeile, Fokus-Wolke, stabile Slider).    
+    - Logik: Die Drag-Sperre prüft nun nur noch Partikel, die sich innerhalb der Breite des Glases befinden.
+    - Optimierung: Sand, der neben das Glas fällt, blockiert das Verschieben nicht mehr.
+    - UI: Der "SAND FÄLLT NOCH..."-Hinweis erscheint nur bei Partikeln im Zielbereich des Glases.
+    - Erhalt: Alle bisherigen Effekte (Wolke, Endless Paper, Nav-Pfeile, stabile Slider).
+    - Alle Kommentare und physikalischen Logiken beibehalten.
+    - Logik: Präzise Volumen-Zeit-Kopplung beibehalten.
+    - UI: Kompaktes vertikales Design integriert.
+    - Alle Effekte (Pulse, Glow, Explosion, Dampf) integriert.
+    - Neu: Präzise Volumen-Zeit-Kopplung (Sandmenge entspricht exakt dem Timer-Fortschritt)
+    - Neu: Proportionale Füllhöhe egal ob 1 Minute oder 120 Minuten Dauer
+    - UI: Kompaktes vertikales Design (v1.3.8) beibehalten
+    - Logik: Symmetrisches Resize (v1.3.6) beibehalten
+    - Alle Effekte (Pulse, Glow, Explosion, Dampf) integriert
+    - UI: Kompakteres Design (360px Breite) für bessere Übersichtlichkeit
+    - UI: Optimierte Touch-Bereiche für Regler und Buttons
+    - Logik: Symmetrisches Resize und stabile UI-Position (v1.3.6) erhalten
+    - Alle Effekte (Pulsieren, Explosion, Dampf) bleiben vollständig erhalten
+    - Fehlerbehebung: Flackern der Pulsation durch Phasen-Akkumulation (smooth transitions) behoben
+    - Optimierung: Pulsationsrate dynamisch angepasst (65 BPM bis 200 BPM vor der Explosion)
+    - Optimierung: Pulsieren massiv verlangsamt (Human Heartbeat Rhythmus), startet extrem ruhig
+    - Optimierung: Beschleunigungskurve erhöht (Cubic-Out), damit die Ruhe länger anhält
+    - Neu: Glas-Explosion wenn die Count-up Zeit die ursprüngliche Dauer erreicht
+    - Neu: Sand verteilt sich bei Explosion über den gesamten Screen
+    - Neu: Dampf-Effekt nach Abschluss des Timers (läuft nach Explosion weiter)
+    - Neu: Count-up Timer im aufsteigenden Dampf zeigt verstrichene Zeit nach Ende
+    - Neu: Pulsierender Sandeffekt bei Fertigstellung
+    - Neu: Anpassbarer Name auf dem Tag (Standard: "Fokus"), editierbar über die UI
+    - Neu: "Spill"-Effekt (Sand außerhalb des Glases) drastisch reduziert für "Versehen"-Optik
+    - Optimierung: Partikel-System verbessert durch Schwerkraft-Beschleunigung und Wobble-Effekt
+    - Optimierung: Verfeinerte findSettleIndex Logik für natürlichere Schüttkegel (Sandhaufen)
+    - Visuell: Partikel pulsieren leicht in ihrer Opazität beim Fallen für organischen Glanz
+    - Neu: Das Glas bietet nun immer Platz für 5 Minuten mehr als eingestellt (Puffer-Volumen)
+    - Optimierung: spawnChance Berechnung korrigiert, um die Zielhöhe exakt zu treffen
+    - UI: Messpunkte und Skalierung berücksichtigen nun die 5-Minuten-Erweiterung
+    - Fehlerbehebung: Flackern minimiert durch strikte Render-Order und Alpha-Reset im Buffer
+    - Optimierung: Sand-Abstand zur Glaswand vergrößert (Kollisionsschutz)
+    - Neu: Sand bündig auf dem Glasboden (Offset Korrektur auf thickness/2)
+    - Neu: Sand näher an die Glaswände gerückt (Marge reduziert)
+    - Neu: Physikalisch korrekte Kurven-Kollision in den Glasecken (Radius 15px) 
+-->    
