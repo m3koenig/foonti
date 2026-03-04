@@ -1,7 +1,12 @@
 <!-- 
     Change Log
-    Focus on Time - Foonti v1.6.9
+    Focus on Time - Foonti v1.7.0
     Änderungen: 
+    - Bugfix: Sandmenge beim Burst (geteilte Links) korrigiert. Nutzt jetzt Volumen-Skalierung, damit der Füllstand zur Zeit passt.
+    - Logik: Partikel im Burst erhalten ein 'volumeWeight', um fehlende Partikelanzahl bei großen Zeiträumen zu kompensieren.
+    - Physik: Farbschichtung im Schwall optimiert für präzise historische Darstellung.
+    - Bugfix: Erneute Absicherung von getPhaseData im globalen Scope.
+    - Erhalt: Alle Performance-Optimierungen (v1.6.7) und mobile Gesten.
     - Bugfix: ReferenceError "getPhaseData is not defined" behoben. Funktions-Scope bereinigt.
     - Physik: Fallweg der Partikel am Glas vorbei um 100% (eine Glashöhe) verlängert (v1.6.8).
     - Bugfix: Glas-Verschiebung im Pausenmodus (v1.6.8). Es ist nun sofort beweglich, sobald der Sand im Glas gelandet ist.
@@ -58,7 +63,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Foonti v1.6.9 - Fix & Physics</title>
+    <title>Foonti v1.7.0 - Burst Volume Fix</title>
     <style>
         :root {
             --bg-color: #050505;
@@ -478,7 +483,9 @@
             }
             if (params.has('width')) { const w = parseInt(params.get('width')); glass.w = w; widthInput.value = w; widthLabel.innerText = w; }
             if (params.has('height')) { const h = parseInt(params.get('height')); glass.h = h; heightInput.value = h; heightLabel.innerText = h; }
-            updateGlassHeights(); calculateSpawnChance();
+            
+            updateGlassHeights(); 
+            calculateSpawnChance();
 
             if (params.has('start')) {
                 isRemoteTimer = true;
@@ -609,18 +616,36 @@
             } else { navArrow.classList.add('hidden'); }
         }
 
+        /**
+         * Schwall-Funktion für geteilte Links
+         * Berechnet nun präzise die Sandmenge basierend auf der Zeit.
+         * Falls die Zeit zu groß für die Partikel-Anzahl ist, werden die Partikel "schwerer".
+         */
         function spawnBurst(seconds) {
-            const totalParticlesNeeded = Math.min(MAX_PARTICLES, Math.floor(spawnChance * 60 * seconds));
+            const particlesPerSecond = spawnChance * 60;
+            const idealCount = Math.floor(particlesPerSecond * seconds);
+            const actualCount = Math.min(MAX_PARTICLES, idealCount);
+            
+            // Volumen-Multiplikator: Wenn wir weniger Partikel spawnen als nötig, 
+            // muss jedes Partikel mehr zum Füllstand beitragen.
+            const volumeWeight = idealCount / actualCount;
+
             const burstY = glass.y - 100;
             const innerMargin = 10;
-            for(let i = 0; i < totalParticlesNeeded; i++) {
-                const virtualElapsed = (i / (spawnChance * 60));
-                const virtualTimeRemaining = duration - virtualElapsed;
+            
+            for(let i = 0; i < actualCount; i++) {
+                // Berechne historische Zeit für Farbtreue
+                // Wir mappen den Partikel-Index zurück auf den Zeitraum 0 bis 'seconds'
+                const progressFactor = i / actualCount;
+                const virtualTimeRemaining = duration - (progressFactor * seconds);
+                
                 const p = virtualTimeRemaining / duration;
                 const phaseData = phases.find(ph => p >= ph.limit) || phases[phases.length - 1];
+                
                 let x = glass.x + innerMargin + Math.random() * (glass.w - innerMargin * 2);
-                const pObj = new Particle(x, phaseData, burstY - Math.random() * 200); 
-                pObj.speedY = 5 + Math.random() * 5; 
+                const pObj = new Particle(x, phaseData, burstY - Math.random() * 600); 
+                pObj.speedY = 4 + Math.random() * 6; 
+                pObj.volumeWeight = volumeWeight; // Neu: Partikel trägt mehr Volumen
                 particles.push(pObj);
             }
         }
@@ -673,6 +698,7 @@
                 else { this.vx = (Math.random() - 0.5) * 0.3; this.speedY = Math.random() * 1.5 + 2.5; }
                 this.drift = this.vx;
                 this.isDissolving = false;
+                this.volumeWeight = 1; // Standard-Gewicht
             }
 
             update(delta) {
@@ -695,7 +721,9 @@
             }
 
             drawToBuffer(index) {
-                const settledIndex = findSettleIndexGlobal(index, glassSandHeights, true); glassSandHeights[settledIndex] += 0.45;
+                const settledIndex = findSettleIndexGlobal(index, glassSandHeights, true); 
+                // Nutze volumeWeight für korrekten Füllstand
+                glassSandHeights[settledIndex] += 0.45 * (this.volumeWeight || 1);
                 const cornerOffset = getGlassBaselineOffset(settledIndex);
                 glass.ctx.save(); glass.ctx.fillStyle = this.color; glass.ctx.globalAlpha = this.baseOpacity;
                 glass.ctx.fillRect(settledIndex, (glass.h - glass.thickness / 2 - cornerOffset) - glassSandHeights[settledIndex], this.size, this.size);
